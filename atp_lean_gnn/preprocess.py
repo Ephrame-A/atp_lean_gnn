@@ -1,0 +1,274 @@
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from pathlib import Path
+
+from .cache import (
+    SplitReport,
+    append_failure_record,
+    build_failure_record,
+    build_json_payload,
+    build_summary,
+    prepare_output_root,
+    write_json_artifact,
+    write_manifest,
+    write_pyg_artifact,
+    write_summary_json,
+    write_summary_markdown,
+    write_vocab,
+)
+from .dataset import DATASET_NAME, DatasetRow, canonicalize_split_name, iter_dataset_rows
+from .graph import proof_state_to_dag
+from .labels import build_tactic_vocab, encode_tactic_name, label_example
+from .pyg import build_vocab_from_labels, dag_to_pyg
+from .reporting import console_print
+from .state import ProofState, parse_state
+
+
+DEFAULT_OUTPUT_ROOT = Path("artifacts") / "prepared" / "v1"
+
+
+@dataclass(frozen=True)
+class PreparedExample:
+    row: DatasetRow
+    parsed_state: ProofState
+    dag: object
+    tactic_name: str
+
+
+@dataclass(frozen=True)
+class PreprocessConfig:
+    dataset_name: str = DATASET_NAME
+    splits: tuple[str, ...] = ("train", "val", "test")
+    output_root: Path = DEFAULT_OUTPUT_ROOT
+    sample_per_split: int | None = None
+    force: bool = False
+
+
+def _normalize_splits(raw_splits: str | list[str] | tuple[str, ...]) -> list[str]:
+    if isinstance(raw_splits, str):
+        candidates = [part.strip() for part in raw_splits.split(",")]
+    else:
+        candidates = [part.strip() for part in raw_splits]
+
+    splits: list[str] = []
+    for split in candidates:
+        if not split:
+            continue
+        canonical_split = canonicalize_split_name(split)
+        if canonical_split not in splits:
+            splits.append(canonical_split)
+
+    if not splits:
+        raise ValueError("At least one split must be provided.")
+    if "train" not in splits:
+        raise ValueError("The requested splits must include 'train' so train-only vocabularies can be built.")
+    return ["train", *[split for split in splits if split != "train"]]
+
+
+def prepare_example(row: DatasetRow) -> PreparedExample:
+    parsed_state = parse_state(row.state)
+    dag = proof_state_to_dag(parsed_state)
+    label_info = label_example(row.tactic)
+    return PreparedExample(
+        row=row,
+        parsed_state=parsed_state,
+        dag=dag,
+        tactic_name=str(label_info["tactic_name"]),
+    )
+
+
+def scan_train_split(
+    *,
+    dataset_name: str,
+    sample_per_split: int | None,
+) -> tuple[dict[str, int], dict[str, int], SplitReport]:
+    node_labels: set[str] = set()
+    tactic_names: list[str] = []
+    report = SplitReport(split="train")
+
+    for row in iter_dataset_rows(
+        dataset_name=dataset_name,
+        split="train",
+        sample_limit=sample_per_split,
+    ):
+        try:
+            example = prepare_example(row)
+        except Exception as exc:
+            report.record_failure(category=exc.__class__.__name__)
+            continue
+
+        report.record_success(dag=example.dag, tactic_name=example.tactic_name)
+        node_labels.update(node.label for node in example.dag.nodes)
+        tactic_names.append(example.tactic_name)
+
+    if report.success_count == 0:
+        raise RuntimeError("The train split produced zero successful examples while building vocabularies.")
+
+    node_vocab = build_vocab_from_labels(node_labels)
+    tactic_vocab = build_tactic_vocab(tactic_names)
+    return node_vocab, tactic_vocab, report
+
+
+def process_split(
+    *,
+    dataset_name: str,
+    split: str,
+    sample_per_split: int | None,
+    output_root: Path,
+    node_vocab: dict[str, int],
+    tactic_vocab: dict[str, int],
+) -> tuple[SplitReport, dict[str, object]]:
+    import torch
+
+    report = SplitReport(split=split)
+    for row in iter_dataset_rows(
+        dataset_name=dataset_name,
+        split=split,
+        sample_limit=sample_per_split,
+    ):
+        try:
+            example = prepare_example(row)
+        except Exception as exc:
+            failure_record = build_failure_record(row, exc, phase="prepare_example")
+            append_failure_record(output_root, split=split, record=failure_record)
+            report.record_failure(category=failure_record["error_type"])
+            continue
+
+        json_payload = build_json_payload(
+            example.row,
+            parsed_state=example.parsed_state,
+            dag=example.dag,
+            tactic_name=example.tactic_name,
+        )
+        write_json_artifact(
+            output_root,
+            split=split,
+            row_index=example.row.row_index,
+            payload=json_payload,
+        )
+
+        data = dag_to_pyg(example.dag, node_vocab)
+        data.y = torch.tensor(
+            [encode_tactic_name(example.tactic_name, tactic_vocab)],
+            dtype=torch.long,
+        )
+        data.split = split
+        data.row_index = example.row.row_index
+        data.dataset_name = example.row.dataset_name
+        data.theorem = example.row.theorem
+        data.tactic_raw = example.row.tactic
+        data.tactic_name = example.tactic_name
+        write_pyg_artifact(
+            output_root,
+            split=split,
+            row_index=example.row.row_index,
+            data=data,
+        )
+
+        report.record_success(dag=example.dag, tactic_name=example.tactic_name)
+
+    if report.success_count == 0:
+        raise RuntimeError(f"Split '{split}' produced zero successful examples.")
+
+    manifest = report.to_manifest(
+        dataset_name=dataset_name,
+        output_root=output_root,
+        vocab_source="train",
+        sample_limit=sample_per_split,
+    )
+    write_manifest(output_root, split=split, manifest=manifest)
+    return report, manifest
+
+
+def run_preprocessing(config: PreprocessConfig) -> dict[str, object]:
+    output_root = Path(config.output_root)
+    if output_root.exists() and not config.force:
+        raise FileExistsError(
+            f"Output root '{output_root}' already exists. Re-run with --force to overwrite it."
+        )
+
+    console_print(
+        f"\n  Scanning train split from {config.dataset_name} to build train-only vocabularies..."
+    )
+    node_vocab, tactic_vocab, train_scan = scan_train_split(
+        dataset_name=config.dataset_name,
+        sample_per_split=config.sample_per_split,
+    )
+    console_print(
+        f"  Train scan complete: attempted={train_scan.attempted_count}, "
+        f"success={train_scan.success_count}, failure={train_scan.failure_count}"
+    )
+
+    prepare_output_root(output_root, splits=list(config.splits), force=config.force)
+    write_vocab(output_root, name="node_vocab.json", vocab=node_vocab)
+    write_vocab(output_root, name="tactic_vocab.json", vocab=tactic_vocab)
+
+    split_reports: dict[str, SplitReport] = {}
+    manifests: dict[str, dict[str, object]] = {}
+    for split in config.splits:
+        console_print(f"\n  Processing split '{split}'...")
+        report, manifest = process_split(
+            dataset_name=config.dataset_name,
+            split=split,
+            sample_per_split=config.sample_per_split,
+            output_root=output_root,
+            node_vocab=node_vocab,
+            tactic_vocab=tactic_vocab,
+        )
+        split_reports[split] = report
+        manifests[split] = manifest
+        console_print(
+            f"  Finished '{split}': attempted={report.attempted_count}, "
+            f"success={report.success_count}, failure={report.failure_count}"
+        )
+
+    summary = build_summary(
+        dataset_name=config.dataset_name,
+        output_root=output_root,
+        splits=list(config.splits),
+        manifests=manifests,
+        split_reports=split_reports,
+        node_vocab=node_vocab,
+        tactic_vocab=tactic_vocab,
+    )
+    summary_json_path = write_summary_json(output_root, summary)
+    summary_md_path = write_summary_markdown(output_root, summary)
+
+    console_print(f"\n  Wrote node vocab     : {output_root / 'vocab' / 'node_vocab.json'}")
+    console_print(f"  Wrote tactic vocab   : {output_root / 'vocab' / 'tactic_vocab.json'}")
+    console_print(f"  Wrote JSON summary   : {summary_json_path}")
+    console_print(f"  Wrote Markdown summary: {summary_md_path}")
+
+    return summary
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Prepare cached graph artifacts from LeanDojo proof states")
+    parser.add_argument("--dataset-name", type=str, default=DATASET_NAME, help="Dataset name to stream from Hugging Face")
+    parser.add_argument("--splits", type=str, default="train,val,test", help="Comma-separated splits to preprocess (must include train)")
+    parser.add_argument("--output-root", type=str, default=str(DEFAULT_OUTPUT_ROOT), help="Output directory for prepared artifacts")
+    parser.add_argument("--sample-per-split", type=int, default=None, help="Optional limit of examples to process per split")
+    parser.add_argument("--force", action="store_true", help="Overwrite the output root if it already exists")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        config = PreprocessConfig(
+            dataset_name=args.dataset_name,
+            splits=tuple(_normalize_splits(args.splits)),
+            output_root=Path(args.output_root),
+            sample_per_split=args.sample_per_split,
+            force=args.force,
+        )
+        run_preprocessing(config)
+    except (FileExistsError, RuntimeError, ValueError) as exc:
+        console_print(f"  ERROR: {exc}")
+        return 1
+
+    return 0

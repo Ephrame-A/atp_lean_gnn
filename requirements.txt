@@ -1,0 +1,10 @@
+# Core runtime dependencies for this repository.
+#
+# Note on GPU support:
+# Install a CUDA-enabled PyTorch build in your environment if you want GPU
+# training. A CPU-only torch build will still satisfy this file, but training
+# will run on the CPU.
+
+datasets>=2.20
+torch>=2.4
+torch-geometric>=2.5

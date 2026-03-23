@@ -37,6 +37,8 @@ def prepare_output_root(output_root: str | Path, *, splits: list[str], force: bo
 
     for dirname in ("failures", "manifests", "reports", "vocab"):
         (root / dirname).mkdir(parents=True, exist_ok=True)
+    for split in splits:
+        (root / "failures" / f"{split}.jsonl").touch()
 
     return root
 
