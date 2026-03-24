@@ -66,6 +66,18 @@ Evaluate the best saved checkpoint for a completed run:
 python scripts/evaluate_baseline.py --run-dir runs/baseline_gnn/run_YYYYMMDD_HHMMSS --split test
 ```
 
+Generate detailed error-analysis artifacts for a finished run:
+
+```bash
+python scripts/analyze_run.py --run-dir runs/baseline_gnn/run_YYYYMMDD_HHMMSS --split both
+```
+
+Compare multiple finished runs side by side:
+
+```bash
+python scripts/compare_runs.py runs/baseline_gnn/run_A runs/baseline_gnn/run_B
+```
+
 ## Documentation
 
 The planning and architecture docs live in `docs/`:
@@ -102,6 +114,12 @@ runs/
       summary.json
       eval_val.json
       eval_test.json
+      analysis_val.json
+      analysis_val.md
+      analysis_test.json
+      analysis_test.md
+      predictions_val.jsonl
+      predictions_test.jsonl
 ```
 
 The baseline config also exposes data-loading and runtime knobs that matter for GPU utilization:

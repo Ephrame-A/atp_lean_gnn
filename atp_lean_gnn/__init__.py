@@ -1,3 +1,4 @@
+from .analysis import analyze_saved_run, compare_saved_runs, load_metrics_history, load_run_summary, render_run_comparison_markdown
 from .cache import SplitReport, build_failure_record, build_json_payload
 from .cli import DEMO_STATE
 from .dataset import DatasetRow, iter_dataset_rows
@@ -42,6 +43,7 @@ __all__ = [
     "ProofState",
     "PreprocessConfig",
     "TrainingLoopConfig",
+    "analyze_saved_run",
     "build_visualization_html",
     "build_dataloaders",
     "build_failure_record",
@@ -49,6 +51,7 @@ __all__ = [
     "build_vocab_from_labels",
     "build_json_payload",
     "build_tactic_vocab",
+    "compare_saved_runs",
     "compute_eval_metrics_from_logits",
     "dag_to_dict",
     "dag_to_pyg",
@@ -58,12 +61,15 @@ __all__ = [
     "graph_stats",
     "iter_dataset_rows",
     "label_example",
+    "load_metrics_history",
     "load_baseline_config",
     "load_prepared_metadata",
+    "load_run_summary",
     "normalize_tactic",
     "parse_state",
     "prepare_example",
     "proof_state_to_dag",
+    "render_run_comparison_markdown",
     "run_preprocessing",
     "SplitReport",
     "train_baseline",
