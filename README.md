@@ -86,6 +86,8 @@ The planning and architecture docs live in `docs/`:
 - `docs/architecture.md`
 - `docs/open_questions.md`
 - `docs/lean_for_atp.md`
+- `docs/issue_backlog.md`
+- `docs/github_issue_specs.md`
 
 ## Why the DAG matters
 
