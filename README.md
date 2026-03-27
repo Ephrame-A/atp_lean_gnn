@@ -48,6 +48,12 @@ Prepare cached dataset artifacts from LeanDojo:
 python scripts/prepare_dataset.py --sample-per-split 100 --output-root artifacts/prepared/v1 --force
 ```
 
+Audit parser coverage on real LeanDojo states without generating training artifacts:
+
+```bash
+python scripts/audit_parser.py --sample-per-split 100 --output-root artifacts/audits/parser/v1 --force
+```
+
 Train the baseline GraphSAGE classifier from a prepared cache:
 
 ```bash
