@@ -19,8 +19,7 @@ def example_stem(row_index: int) -> str:
     return f"{row_index:0{EXAMPLE_ID_WIDTH}d}"
 
 
-def prepare_output_root(output_root: str | Path, *, splits: list[str], force: bool) -> Path:
-    root = Path(output_root)
+def _reset_output_root(root: Path, *, force: bool) -> Path:
     if root.exists():
         if not force:
             raise FileExistsError(
@@ -30,12 +29,30 @@ def prepare_output_root(output_root: str | Path, *, splits: list[str], force: bo
             shutil.rmtree(root)
         else:
             root.unlink()
+    return root
+
+
+def prepare_output_root(output_root: str | Path, *, splits: list[str], force: bool) -> Path:
+    root = Path(output_root)
+    _reset_output_root(root, force=force)
 
     for split in splits:
         (root / split / "json").mkdir(parents=True, exist_ok=True)
         (root / split / "pyg").mkdir(parents=True, exist_ok=True)
 
     for dirname in ("failures", "manifests", "reports", "vocab"):
+        (root / dirname).mkdir(parents=True, exist_ok=True)
+    for split in splits:
+        (root / "failures" / f"{split}.jsonl").touch()
+
+    return root
+
+
+def prepare_audit_output_root(output_root: str | Path, *, splits: list[str], force: bool) -> Path:
+    root = Path(output_root)
+    _reset_output_root(root, force=force)
+
+    for dirname in ("failures", "manifests", "reports"):
         (root / dirname).mkdir(parents=True, exist_ok=True)
     for split in splits:
         (root / "failures" / f"{split}.jsonl").touch()
@@ -166,6 +183,20 @@ def write_summary_markdown(output_root: str | Path, summary: dict[str, object]) 
     return path
 
 
+def write_parser_audit_json(output_root: str | Path, summary: dict[str, object]) -> Path:
+    root = Path(output_root)
+    path = root / "reports" / "parser_audit.json"
+    return _write_json(path, summary)
+
+
+def write_parser_audit_markdown(output_root: str | Path, markdown: str) -> Path:
+    root = Path(output_root)
+    path = root / "reports" / "parser_audit.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(markdown, encoding="utf-8")
+    return path
+
+
 def build_json_payload(
     row: DatasetRow,
     *,
@@ -192,16 +223,31 @@ def build_json_payload(
     }
 
 
-def build_failure_record(row: DatasetRow, exc: Exception, *, phase: str) -> dict[str, object]:
+def _unwrap_failure(exc: Exception, phase: str | None) -> tuple[str, Exception]:
+    failure_phase = phase or getattr(exc, "phase", None) or "unknown"
+    failure_exc = getattr(exc, "cause", exc)
+    return failure_phase, failure_exc
+
+
+def build_failure_record(
+    row: DatasetRow,
+    exc: Exception,
+    *,
+    phase: str | None = None,
+) -> dict[str, object]:
+    failure_phase, failure_exc = _unwrap_failure(exc, phase)
+    error_type = failure_exc.__class__.__name__
+    failure_category = f"{failure_phase}:{error_type}"
     return {
         "dataset": row.dataset_name,
         "split": row.split,
         "row_index": row.row_index,
         "theorem": row.theorem,
         "tactic_raw": row.tactic,
-        "phase": phase,
-        "error_type": exc.__class__.__name__,
-        "error_message": str(exc),
+        "phase": failure_phase,
+        "failure_category": failure_category,
+        "error_type": error_type,
+        "error_message": str(failure_exc),
         "state_preview": "" if row.state is None else str(row.state)[:200],
     }
 
@@ -230,6 +276,8 @@ class SplitReport:
     reused_node_counts: list[int] = field(default_factory=list)
     tactic_counts: Counter[str] = field(default_factory=Counter)
     failure_categories: Counter[str] = field(default_factory=Counter)
+    failure_phases: Counter[str] = field(default_factory=Counter)
+    representative_failures: dict[str, list[dict[str, object]]] = field(default_factory=dict)
 
     def record_success(self, *, dag: DAGBuilder, tactic_name: str) -> None:
         self.attempted_count += 1
@@ -239,10 +287,24 @@ class SplitReport:
         self.reused_node_counts.append(len(dag.reused_nodes()))
         self.tactic_counts[tactic_name] += 1
 
-    def record_failure(self, *, category: str) -> None:
+    def record_failure(
+        self,
+        *,
+        category: str,
+        phase: str | None = None,
+        example: dict[str, object] | None = None,
+        max_examples_per_category: int | None = None,
+    ) -> None:
         self.attempted_count += 1
         self.failure_count += 1
         self.failure_categories[category] += 1
+        resolved_phase = phase or category.partition(":")[0] or "unknown"
+        self.failure_phases[resolved_phase] += 1
+
+        if example is not None and (max_examples_per_category is None or max_examples_per_category > 0):
+            bucket = self.representative_failures.setdefault(category, [])
+            if max_examples_per_category is None or len(bucket) < max_examples_per_category:
+                bucket.append(example)
 
     def parser_success_rate(self) -> float:
         if self.attempted_count == 0:
@@ -288,6 +350,42 @@ class SplitReport:
             "tactic_class_count": len(self.tactic_counts),
             "top_tactics": _counter_summary(self.tactic_counts),
             "top_failure_categories": _counter_summary(self.failure_categories),
+            "top_failure_phases": _counter_summary(self.failure_phases),
+        }
+
+    def to_audit_manifest(
+        self,
+        *,
+        dataset_name: str,
+        output_root: str | Path,
+        sample_limit: int | None,
+    ) -> dict[str, object]:
+        root = Path(output_root)
+        failure_log = root / "failures" / f"{self.split}.jsonl"
+        manifest_path = root / "manifests" / f"{self.split}.json"
+
+        return {
+            "dataset": dataset_name,
+            "split": self.split,
+            "sample_limit": sample_limit,
+            "attempted_count": self.attempted_count,
+            "success_count": self.success_count,
+            "failure_count": self.failure_count,
+            "parser_success_rate": self.parser_success_rate(),
+            "artifact_paths": {
+                "failure_log": _relative_to(failure_log, root),
+                "manifest": _relative_to(manifest_path, root),
+                "parser_audit_json": _relative_to(root / "reports" / "parser_audit.json", root),
+                "parser_audit_markdown": _relative_to(root / "reports" / "parser_audit.md", root),
+            },
+            "graph_stats": {
+                "node_count": _stats_dict(self.node_counts),
+                "edge_count": _stats_dict(self.edge_counts),
+                "reused_node_count": _stats_dict(self.reused_node_counts),
+            },
+            "top_failure_categories": _counter_summary(self.failure_categories),
+            "top_failure_phases": _counter_summary(self.failure_phases),
+            "representative_failure_examples": self.representative_failures,
         }
 
 

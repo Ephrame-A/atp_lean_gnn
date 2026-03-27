@@ -1,3 +1,4 @@
+from .audit import DEFAULT_AUDIT_OUTPUT_ROOT, ParserAuditConfig, run_parser_audit
 from .analysis import analyze_saved_run, compare_saved_runs, load_metrics_history, load_run_summary, render_run_comparison_markdown
 from .cache import SplitReport, build_failure_record, build_json_payload
 from .cli import DEMO_STATE
@@ -5,7 +6,8 @@ from .dataset import DatasetRow, iter_dataset_rows
 from .graph import DAGBuilder, GraphNode, GraphStats, dag_to_dict, graph_stats, proof_state_to_dag, write_dag_json
 from .labels import EMPTY_TACTIC, UNKNOWN_TACTIC, build_tactic_vocab, encode_tactic_name, label_example, normalize_tactic
 from .model import GraphSAGEClassifierConfig, GraphSAGEStateClassifier
-from .preprocess import DEFAULT_OUTPUT_ROOT, PreprocessConfig, prepare_example, run_preprocessing
+from .preparation import PreparedExample, prepare_example
+from .preprocess import DEFAULT_OUTPUT_ROOT, PreprocessConfig, run_preprocessing
 from .pyg import NODE_TYPE_TO_ID, build_vocab, build_vocab_from_labels, dag_to_pyg
 from .state import Hypothesis, ProofState, parse_state
 from .training import (
@@ -28,6 +30,7 @@ __all__ = [
     "BaselineConfig",
     "DAGBuilder",
     "DEMO_STATE",
+    "DEFAULT_AUDIT_OUTPUT_ROOT",
     "DEFAULT_BASELINE_CONFIG_PATH",
     "DEFAULT_OUTPUT_ROOT",
     "DatasetRow",
@@ -40,7 +43,9 @@ __all__ = [
     "NODE_TYPE_TO_ID",
     "PreparedGraphDataset",
     "PreparedMetadata",
+    "PreparedExample",
     "ProofState",
+    "ParserAuditConfig",
     "PreprocessConfig",
     "TrainingLoopConfig",
     "analyze_saved_run",
@@ -70,6 +75,7 @@ __all__ = [
     "prepare_example",
     "proof_state_to_dag",
     "render_run_comparison_markdown",
+    "run_parser_audit",
     "run_preprocessing",
     "SplitReport",
     "train_baseline",

@@ -18,23 +18,14 @@ from .cache import (
     write_summary_markdown,
     write_vocab,
 )
-from .dataset import DATASET_NAME, DatasetRow, canonicalize_split_name, iter_dataset_rows
-from .graph import proof_state_to_dag
-from .labels import build_tactic_vocab, encode_tactic_name, label_example
+from .dataset import DATASET_NAME, canonicalize_split_name, iter_dataset_rows
+from .preparation import prepare_example
+from .labels import build_tactic_vocab, encode_tactic_name
 from .pyg import build_vocab_from_labels, dag_to_pyg
 from .reporting import console_print
-from .state import ProofState, parse_state
 
 
 DEFAULT_OUTPUT_ROOT = Path("artifacts") / "prepared" / "v1"
-
-
-@dataclass(frozen=True)
-class PreparedExample:
-    row: DatasetRow
-    parsed_state: ProofState
-    dag: object
-    tactic_name: str
 
 
 @dataclass(frozen=True)
@@ -67,18 +58,6 @@ def _normalize_splits(raw_splits: str | list[str] | tuple[str, ...]) -> list[str
     return ["train", *[split for split in splits if split != "train"]]
 
 
-def prepare_example(row: DatasetRow) -> PreparedExample:
-    parsed_state = parse_state(row.state)
-    dag = proof_state_to_dag(parsed_state)
-    label_info = label_example(row.tactic)
-    return PreparedExample(
-        row=row,
-        parsed_state=parsed_state,
-        dag=dag,
-        tactic_name=str(label_info["tactic_name"]),
-    )
-
-
 def scan_train_split(
     *,
     dataset_name: str,
@@ -96,7 +75,11 @@ def scan_train_split(
         try:
             example = prepare_example(row)
         except Exception as exc:
-            report.record_failure(category=exc.__class__.__name__)
+            failure_record = build_failure_record(row, exc)
+            report.record_failure(
+                category=str(failure_record["failure_category"]),
+                phase=str(failure_record["phase"]),
+            )
             continue
 
         report.record_success(dag=example.dag, tactic_name=example.tactic_name)
@@ -131,9 +114,12 @@ def process_split(
         try:
             example = prepare_example(row)
         except Exception as exc:
-            failure_record = build_failure_record(row, exc, phase="prepare_example")
+            failure_record = build_failure_record(row, exc)
             append_failure_record(output_root, split=split, record=failure_record)
-            report.record_failure(category=failure_record["error_type"])
+            report.record_failure(
+                category=str(failure_record["failure_category"]),
+                phase=str(failure_record["phase"]),
+            )
             continue
 
         json_payload = build_json_payload(
