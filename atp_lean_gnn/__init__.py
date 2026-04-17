@@ -9,6 +9,8 @@ from .argument_training import (
     evaluate_model_with_args,
     train_one_epoch_with_args,
 )
+from .audit import DEFAULT_AUDIT_OUTPUT_ROOT, ParserAuditConfig, run_parser_audit
+from .analysis import analyze_saved_run, compare_saved_runs, load_metrics_history, load_run_summary, render_run_comparison_markdown
 from .cache import SplitReport, build_failure_record, build_json_payload
 from .cli import DEMO_STATE
 from .dataset import DatasetRow, iter_dataset_rows
@@ -28,6 +30,9 @@ from .labels import (
 from .model import GraphSAGEClassifierConfig, GraphSAGEStateClassifier
 from .preprocess import DEFAULT_OUTPUT_ROOT, PreprocessConfig, prepare_example, run_preprocessing
 from .pyg import NODE_TYPE_TO_ID, build_premise_mask, build_vocab, build_vocab_from_labels, dag_to_pyg
+from .preparation import PreparedExample, prepare_example
+from .preprocess import DEFAULT_OUTPUT_ROOT, PreprocessConfig, run_preprocessing
+from .pyg import NODE_TYPE_TO_ID, build_vocab, build_vocab_from_labels, dag_to_pyg
 from .state import Hypothesis, ProofState, parse_state
 from .training import (
     DEFAULT_BASELINE_CONFIG_PATH,
@@ -50,6 +55,8 @@ __all__ = [
     "BaselineConfig",
     "DAGBuilder",
     "DEFAULT_ARITY",
+    "DEMO_STATE",
+    "DEFAULT_AUDIT_OUTPUT_ROOT",
     "DEFAULT_BASELINE_CONFIG_PATH",
     "DEFAULT_OUTPUT_ROOT",
     "DEMO_STATE",
@@ -63,12 +70,16 @@ __all__ = [
     "NODE_TYPE_TO_ID",
     "PreparedGraphDataset",
     "PreparedMetadata",
+    "PreparedExample",
     "ProofState",
+    "ParserAuditConfig",
     "PreprocessConfig",
     "TACTIC_ARITY",
     "TacticWithArgsClassifier",
     "TacticWithArgsConfig",
     "TrainingLoopConfig",
+    "analyze_saved_run",
+    "build_visualization_html",
     "build_dataloaders",
     "build_failure_record",
     "build_json_payload",
@@ -77,6 +88,7 @@ __all__ = [
     "build_vocab",
     "build_vocab_from_labels",
     "compute_combined_loss",
+    "compare_saved_runs",
     "compute_eval_metrics_from_logits",
     "dag_to_dict",
     "dag_to_pyg",
@@ -88,14 +100,18 @@ __all__ = [
     "graph_stats",
     "iter_dataset_rows",
     "label_example",
+    "load_metrics_history",
     "load_baseline_config",
     "load_prepared_metadata",
+    "load_run_summary",
     "normalize_tactic",
     "parse_state",
     "parse_tactic_arguments",
     "prepare_example",
     "proof_state_to_dag",
     "resolve_arg_targets_to_padded",
+    "render_run_comparison_markdown",
+    "run_parser_audit",
     "run_preprocessing",
     "SplitReport",
     "train_baseline",

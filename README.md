@@ -48,6 +48,12 @@ Prepare cached dataset artifacts from LeanDojo:
 python scripts/prepare_dataset.py --sample-per-split 100 --output-root artifacts/prepared/v1 --force
 ```
 
+Audit parser coverage on real LeanDojo states without generating training artifacts:
+
+```bash
+python scripts/audit_parser.py --sample-per-split 100 --output-root artifacts/audits/parser/v1 --force
+```
+
 Train the baseline GraphSAGE classifier from a prepared cache:
 
 ```bash
@@ -66,6 +72,18 @@ Evaluate the best saved checkpoint for a completed run:
 python scripts/evaluate_baseline.py --run-dir runs/baseline_gnn/run_YYYYMMDD_HHMMSS --split test
 ```
 
+Generate detailed error-analysis artifacts for a finished run:
+
+```bash
+python scripts/analyze_run.py --run-dir runs/baseline_gnn/run_YYYYMMDD_HHMMSS --split both
+```
+
+Compare multiple finished runs side by side:
+
+```bash
+python scripts/compare_runs.py runs/baseline_gnn/run_A runs/baseline_gnn/run_B
+```
+
 ## Documentation
 
 The planning and architecture docs live in `docs/`:
@@ -73,6 +91,9 @@ The planning and architecture docs live in `docs/`:
 - `docs/roadmap.md`
 - `docs/architecture.md`
 - `docs/open_questions.md`
+- `docs/lean_for_atp.md`
+- `docs/issue_backlog.md`
+- `docs/github_issue_specs.md`
 
 ## Why the DAG matters
 
@@ -102,6 +123,12 @@ runs/
       summary.json
       eval_val.json
       eval_test.json
+      analysis_val.json
+      analysis_val.md
+      analysis_test.json
+      analysis_test.md
+      predictions_val.jsonl
+      predictions_test.jsonl
 ```
 
 The baseline config also exposes data-loading and runtime knobs that matter for GPU utilization:

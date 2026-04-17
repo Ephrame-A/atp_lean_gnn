@@ -105,6 +105,7 @@ class DatasetPreparationTests(unittest.TestCase):
         self.assertEqual(record["row_index"], 7)
         self.assertEqual(record["error_type"], "RuntimeError")
         self.assertEqual(record["phase"], "prepare_example")
+        self.assertEqual(record["failure_category"], "prepare_example:RuntimeError")
         self.assertIn("state_preview", record)
 
     def test_json_payload_shape(self) -> None:
@@ -174,6 +175,8 @@ class DatasetPreparationTests(unittest.TestCase):
         failure_record = json.loads(failure_log[0])
         self.assertEqual(failure_record["row_index"], 0)
         self.assertEqual(failure_record["error_type"], "TypeError")
+        self.assertEqual(failure_record["phase"], "parse_state")
+        self.assertEqual(failure_record["failure_category"], "parse_state:TypeError")
 
         train_json = json.loads((self.output_root / "train" / "json" / "000000001.json").read_text(encoding="utf-8"))
         self.assertEqual(train_json["metadata"]["tactic_name"], "simp")
