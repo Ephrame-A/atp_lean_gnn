@@ -65,3 +65,29 @@ def dag_to_pyg(
         edge_index = torch.zeros((2, 0), dtype=torch.long)
 
     return Data(x=x, edge_index=edge_index, node_type=node_type, num_nodes=dag.num_nodes)
+
+
+# Node types eligible for pointer-based argument selection
+_PREMISE_SELECTABLE_TYPES = {"var", "predicate", "type"}
+_PREMISE_SELECTABLE_META_LABELS = {"Hyp"}
+
+
+def build_premise_mask(dag: DAGBuilder) -> list[bool]:
+    """Return a per-node boolean list where ``True`` marks a valid argument candidate.
+
+    Valid candidates are:
+    - Leaf-like nodes with type ``var``, ``predicate``, or ``type``
+    - ``Hyp`` nodes (entire hypotheses)
+
+    Excluded: ``App``, ``Arrow``, ``Forall``, ``Explicit``, ``State``,
+    ``Goal``, operators, and other structural syntax nodes.
+    """
+    mask: list[bool] = []
+    for node in dag.nodes:
+        if node.label in _PREMISE_SELECTABLE_META_LABELS:
+            mask.append(True)
+        elif node.node_type in _PREMISE_SELECTABLE_TYPES:
+            mask.append(True)
+        else:
+            mask.append(False)
+    return mask

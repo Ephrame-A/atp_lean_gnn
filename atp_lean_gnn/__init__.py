@@ -1,11 +1,33 @@
+from .argument_selector import (
+    ArgumentSelector,
+    TacticWithArgsClassifier,
+    TacticWithArgsConfig,
+    compute_combined_loss,
+    resolve_arg_targets_to_padded,
+)
+from .argument_training import (
+    evaluate_model_with_args,
+    train_one_epoch_with_args,
+)
 from .cache import SplitReport, build_failure_record, build_json_payload
 from .cli import DEMO_STATE
 from .dataset import DatasetRow, iter_dataset_rows
 from .graph import DAGBuilder, GraphNode, GraphStats, dag_to_dict, graph_stats, proof_state_to_dag, write_dag_json
-from .labels import EMPTY_TACTIC, UNKNOWN_TACTIC, build_tactic_vocab, encode_tactic_name, label_example, normalize_tactic
+from .labels import (
+    DEFAULT_ARITY,
+    EMPTY_TACTIC,
+    TACTIC_ARITY,
+    UNKNOWN_TACTIC,
+    build_tactic_vocab,
+    encode_tactic_name,
+    get_tactic_arity,
+    label_example,
+    normalize_tactic,
+    parse_tactic_arguments,
+)
 from .model import GraphSAGEClassifierConfig, GraphSAGEStateClassifier
 from .preprocess import DEFAULT_OUTPUT_ROOT, PreprocessConfig, prepare_example, run_preprocessing
-from .pyg import NODE_TYPE_TO_ID, build_vocab, build_vocab_from_labels, dag_to_pyg
+from .pyg import NODE_TYPE_TO_ID, build_premise_mask, build_vocab, build_vocab_from_labels, dag_to_pyg
 from .state import Hypothesis, ProofState, parse_state
 from .training import (
     DEFAULT_BASELINE_CONFIG_PATH,
@@ -24,11 +46,13 @@ from .training import (
 from .visualize import build_visualization_html, visualize_dag
 
 __all__ = [
+    "ArgumentSelector",
     "BaselineConfig",
     "DAGBuilder",
-    "DEMO_STATE",
+    "DEFAULT_ARITY",
     "DEFAULT_BASELINE_CONFIG_PATH",
     "DEFAULT_OUTPUT_ROOT",
+    "DEMO_STATE",
     "DatasetRow",
     "EMPTY_TACTIC",
     "GraphNode",
@@ -41,20 +65,26 @@ __all__ = [
     "PreparedMetadata",
     "ProofState",
     "PreprocessConfig",
+    "TACTIC_ARITY",
+    "TacticWithArgsClassifier",
+    "TacticWithArgsConfig",
     "TrainingLoopConfig",
-    "build_visualization_html",
     "build_dataloaders",
     "build_failure_record",
+    "build_json_payload",
+    "build_premise_mask",
+    "build_tactic_vocab",
     "build_vocab",
     "build_vocab_from_labels",
-    "build_json_payload",
-    "build_tactic_vocab",
+    "compute_combined_loss",
     "compute_eval_metrics_from_logits",
     "dag_to_dict",
     "dag_to_pyg",
     "encode_tactic_name",
     "evaluate_baseline_run",
     "evaluate_model",
+    "evaluate_model_with_args",
+    "get_tactic_arity",
     "graph_stats",
     "iter_dataset_rows",
     "label_example",
@@ -62,12 +92,16 @@ __all__ = [
     "load_prepared_metadata",
     "normalize_tactic",
     "parse_state",
+    "parse_tactic_arguments",
     "prepare_example",
     "proof_state_to_dag",
+    "resolve_arg_targets_to_padded",
     "run_preprocessing",
     "SplitReport",
     "train_baseline",
+    "train_one_epoch_with_args",
     "UNKNOWN_TACTIC",
     "visualize_dag",
     "write_dag_json",
 ]
+
