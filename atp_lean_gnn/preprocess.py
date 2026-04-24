@@ -94,6 +94,21 @@ def scan_train_split(
     return node_vocab, tactic_vocab, report
 
 
+def _resolve_arg_node_indices(dag, arg_tokens: list[str]) -> list[int]:
+    """Best-effort: match each argument token to a DAG node index by label.
+
+    Returns a list of node indices (one per argument token), using ``-1``
+    when no matching node is found in the graph.
+    """
+    # Build label → node_id map (first match wins)
+    label_to_id: dict[str, int] = {}
+    for node in dag.nodes:
+        if node.label not in label_to_id:
+            label_to_id[node.label] = node.id
+
+    return [label_to_id.get(token, -1) for token in arg_tokens]
+
+
 def process_split(
     *,
     dataset_name: str,
@@ -104,6 +119,9 @@ def process_split(
     tactic_vocab: dict[str, int],
 ) -> tuple[SplitReport, dict[str, object]]:
     import torch
+
+    from .labels import parse_tactic_arguments
+    from .pyg import build_premise_mask
 
     report = SplitReport(split=split)
     for row in iter_dataset_rows(
@@ -146,6 +164,17 @@ def process_split(
         data.theorem = example.row.theorem
         data.tactic_raw = example.row.tactic
         data.tactic_name = example.tactic_name
+
+        # --- Argument-selection ground truth (additive) ---------------
+        premise_mask = build_premise_mask(example.dag)
+        data.premise_mask = torch.tensor(premise_mask, dtype=torch.bool)
+
+        _, arg_tokens = parse_tactic_arguments(example.row.tactic)
+        arg_indices = _resolve_arg_node_indices(example.dag, arg_tokens)
+        data.arg_node_indices = torch.tensor(arg_indices, dtype=torch.long) if arg_indices else torch.tensor([], dtype=torch.long)
+        data.arg_count = len(arg_indices)
+        # --------------------------------------------------------------
+
         write_pyg_artifact(
             output_root,
             split=split,
