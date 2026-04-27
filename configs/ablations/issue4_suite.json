@@ -1,0 +1,44 @@
+{
+  "suite_name": "issue4_initial_ablation",
+  "base_config": "configs/baseline_graphsage_state.json",
+  "output_root": "runs/ablations",
+  "seeds": [
+    42
+  ],
+  "variants": [
+    {
+      "name": "baseline",
+      "description": "Reference GraphSAGE baseline with bidirectional edges, State readout, and node-type embeddings.",
+      "overrides": {
+        "edge_mode": "bidirectional",
+        "use_node_type": true,
+        "model": {
+          "readout": "state"
+        }
+      }
+    },
+    {
+      "name": "forward_edges",
+      "description": "Forward-only message passing while keeping the rest of the baseline fixed.",
+      "overrides": {
+        "edge_mode": "forward"
+      }
+    },
+    {
+      "name": "mean_pool",
+      "description": "Mean-pooled graph readout instead of State-node readout.",
+      "overrides": {
+        "model": {
+          "readout": "mean"
+        }
+      }
+    },
+    {
+      "name": "no_node_type",
+      "description": "Disable node-type embeddings while keeping the rest of the baseline fixed.",
+      "overrides": {
+        "use_node_type": false
+      }
+    }
+  ]
+}

@@ -84,6 +84,12 @@ Compare multiple finished runs side by side:
 python scripts/compare_runs.py runs/baseline_gnn/run_A runs/baseline_gnn/run_B
 ```
 
+Run the first scripted ablation suite for edge direction, readout, and node-type usage:
+
+```bash
+python scripts/run_ablation_suite.py --suite-config configs/ablations/issue4_suite.json
+```
+
 ## Documentation
 
 The planning and architecture docs live in `docs/`:
@@ -92,6 +98,7 @@ The planning and architecture docs live in `docs/`:
 - `docs/architecture.md`
 - `docs/open_questions.md`
 - `docs/lean_for_atp.md`
+- `docs/neural_vs_symbolic.md`
 - `docs/issue_backlog.md`
 - `docs/github_issue_specs.md`
 
@@ -138,3 +145,20 @@ The baseline config also exposes data-loading and runtime knobs that matter for 
 - `training.persistent_workers`
 - `training.prefetch_factor`
 - `training.use_amp`
+
+The ablation suite writes grouped outputs under `runs/ablations/<suite_name>/`:
+
+```text
+runs/
+  ablations/
+    <suite_name>/
+      suite_config.json
+      run_index.json
+      suite_summary.json
+      suite_summary.md
+      variant_runs/
+        baseline/
+        forward_edges/
+        mean_pool/
+        no_node_type/
+```

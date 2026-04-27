@@ -1,3 +1,11 @@
+from .ablations import (
+    DEFAULT_ABLATION_OUTPUT_ROOT,
+    DEFAULT_ABLATION_SUITE_CONFIG_PATH,
+    AblationSuiteConfig,
+    AblationVariant,
+    load_ablation_suite_config,
+    run_ablation_suite,
+)
 from .audit import DEFAULT_AUDIT_OUTPUT_ROOT, ParserAuditConfig, run_parser_audit
 from .analysis import analyze_saved_run, compare_saved_runs, load_metrics_history, load_run_summary, render_run_comparison_markdown
 from .cache import SplitReport, build_failure_record, build_json_payload
@@ -27,9 +35,13 @@ from .training import (
 from .visualize import build_visualization_html, visualize_dag
 
 __all__ = [
+    "AblationSuiteConfig",
+    "AblationVariant",
     "BaselineConfig",
     "DAGBuilder",
     "DEMO_STATE",
+    "DEFAULT_ABLATION_OUTPUT_ROOT",
+    "DEFAULT_ABLATION_SUITE_CONFIG_PATH",
     "DEFAULT_AUDIT_OUTPUT_ROOT",
     "DEFAULT_BASELINE_CONFIG_PATH",
     "DEFAULT_OUTPUT_ROOT",
@@ -66,6 +78,7 @@ __all__ = [
     "graph_stats",
     "iter_dataset_rows",
     "label_example",
+    "load_ablation_suite_config",
     "load_metrics_history",
     "load_baseline_config",
     "load_prepared_metadata",
@@ -75,6 +88,7 @@ __all__ = [
     "prepare_example",
     "proof_state_to_dag",
     "render_run_comparison_markdown",
+    "run_ablation_suite",
     "run_parser_audit",
     "run_preprocessing",
     "SplitReport",

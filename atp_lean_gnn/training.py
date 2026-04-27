@@ -85,6 +85,7 @@ class BaselineConfig:
                 hidden_dim=int(model_payload.get("hidden_dim", 128)),
                 num_layers=int(model_payload.get("num_layers", 4)),
                 dropout=float(model_payload.get("dropout", 0.2)),
+                readout=str(model_payload.get("readout", "state")),
             ),
             training=TrainingLoopConfig(
                 batch_size=int(training_payload.get("batch_size", 32)),
@@ -114,6 +115,9 @@ class BaselineConfig:
             raise ValueError("Training config field 'model.hidden_dim' must be positive.")
         if self.model.num_layers < 1:
             raise ValueError("Training config field 'model.num_layers' must be positive.")
+        readout = self.model.readout.lower().strip()
+        if readout not in {"state", "mean"}:
+            raise ValueError("Training config field 'model.readout' must be either 'state' or 'mean'.")
         if self.training.batch_size < 1:
             raise ValueError("Training config field 'training.batch_size' must be positive.")
         if self.training.epochs < 1:
@@ -138,7 +142,12 @@ class BaselineConfig:
             device=device,
             edge_mode=edge_mode,
             use_node_type=self.use_node_type,
-            model=self.model,
+            model=GraphSAGEClassifierConfig(
+                hidden_dim=self.model.hidden_dim,
+                num_layers=self.model.num_layers,
+                dropout=self.model.dropout,
+                readout=readout,
+            ),
             training=self.training,
         )
 
@@ -477,6 +486,7 @@ def build_model(metadata: PreparedMetadata, config: BaselineConfig) -> GraphSAGE
         num_layers=config.model.num_layers,
         dropout=config.model.dropout,
         use_node_type=config.use_node_type,
+        readout=config.model.readout,
     )
 
 
@@ -734,6 +744,10 @@ def train_baseline(
     console_print(f"  Device                   : {device}")
     console_print(f"  AMP enabled              : {use_amp}")
     console_print(
+        f"  Model settings           : readout={config.model.readout}, "
+        f"edge_mode={config.edge_mode}, node_type={config.use_node_type}"
+    )
+    console_print(
         f"  Split sizes              : train={len(datasets['train'])}, "
         f"val={len(datasets['val'])}, test={len(datasets['test'])}"
     )
@@ -860,6 +874,9 @@ def train_baseline(
         "prepared_root": str(config.prepared_root),
         "device": str(device),
         "amp_enabled": use_amp,
+        "edge_mode": config.edge_mode,
+        "use_node_type": config.use_node_type,
+        "model": config.model.to_dict(),
         "dataset_sizes": {split: len(dataset) for split, dataset in datasets.items()},
         "start_epoch": start_epoch,
         "best_epoch": best_epoch,

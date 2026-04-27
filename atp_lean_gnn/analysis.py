@@ -360,6 +360,7 @@ def compare_saved_runs(run_dirs: list[str | Path]) -> dict[str, object]:
                 "test_top5": float(summary["test_evaluation"]["top5_accuracy"]),
                 "top1_gap": float(summary["best_validation"]["top1_accuracy"]) - float(summary["test_evaluation"]["top1_accuracy"]),
                 "edge_mode": config.edge_mode,
+                "readout": config.model.readout,
                 "hidden_dim": config.model.hidden_dim,
                 "num_layers": config.model.num_layers,
                 "use_node_type": config.use_node_type,
@@ -375,8 +376,8 @@ def render_run_comparison_markdown(comparison: dict[str, object]) -> str:
     lines = [
         "# Run Comparison",
         "",
-        "| Run | Best Epoch | Val Top-1 | Val Top-5 | Test Top-1 | Test Top-5 | Top-1 Gap | Edge Mode | Hidden | Layers | Node Type | AMP |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- | --- |",
+        "| Run | Best Epoch | Val Top-1 | Val Top-5 | Test Top-1 | Test Top-5 | Top-1 Gap | Edge Mode | Readout | Hidden | Layers | Node Type | AMP |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | ---: | --- | --- |",
     ]
     for item in comparison["runs"]:
         lines.append(
@@ -384,7 +385,7 @@ def render_run_comparison_markdown(comparison: dict[str, object]) -> str:
             f"{item['val_top1']:.4f} | {item['val_top5']:.4f} | "
             f"{item['test_top1']:.4f} | {item['test_top5']:.4f} | "
             f"{item['top1_gap']:.4f} | {item['edge_mode']} | "
-            f"{item['hidden_dim']} | {item['num_layers']} | "
+            f"{item['readout']} | {item['hidden_dim']} | {item['num_layers']} | "
             f"{item['use_node_type']} | {item['amp_enabled']} |"
         )
     return "\n".join(lines) + "\n"

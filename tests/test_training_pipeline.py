@@ -148,7 +148,7 @@ class TrainingPipelineTests(unittest.TestCase):
             )
             write_manifest(self.prepared_root, split=split, manifest=manifest)
 
-    def _tiny_config(self) -> BaselineConfig:
+    def _tiny_config(self, *, readout: str = "state") -> BaselineConfig:
         return BaselineConfig(
             prepared_root=self.prepared_root,
             run_root=self.run_root,
@@ -156,7 +156,7 @@ class TrainingPipelineTests(unittest.TestCase):
             device="cpu",
             edge_mode="bidirectional",
             use_node_type=True,
-            model=GraphSAGEClassifierConfig(hidden_dim=16, num_layers=2, dropout=0.1),
+            model=GraphSAGEClassifierConfig(hidden_dim=16, num_layers=2, dropout=0.1, readout=readout),
             training=TrainingLoopConfig(
                 batch_size=2,
                 epochs=1,
@@ -209,9 +209,9 @@ class TrainingPipelineTests(unittest.TestCase):
             int(forward_sample.edge_index.shape[1]),
         )
 
-    def test_model_forward_returns_batch_logits(self) -> None:
+    def test_model_forward_returns_batch_logits_with_state_readout(self) -> None:
         metadata = load_prepared_metadata(self.prepared_root)
-        config = self._tiny_config()
+        config = self._tiny_config(readout="state")
         _, loaders = build_dataloaders(metadata, config)
         batch = next(iter(loaders["train"]))
         model = build_model(metadata, config)
@@ -219,6 +219,53 @@ class TrainingPipelineTests(unittest.TestCase):
         logits = model(batch)
 
         self.assertEqual(tuple(logits.shape), (2, len(metadata.tactic_vocab)))
+
+    def test_model_forward_returns_batch_logits_with_mean_readout(self) -> None:
+        metadata = load_prepared_metadata(self.prepared_root)
+        config = self._tiny_config(readout="mean")
+        _, loaders = build_dataloaders(metadata, config)
+        batch = next(iter(loaders["train"]))
+        model = build_model(metadata, config)
+
+        logits = model(batch)
+
+        self.assertEqual(tuple(logits.shape), (2, len(metadata.tactic_vocab)))
+
+    def test_invalid_readout_is_rejected_during_config_normalization(self) -> None:
+        with self.assertRaisesRegex(ValueError, "model.readout"):
+            BaselineConfig(
+                prepared_root=self.prepared_root,
+                run_root=self.run_root,
+                seed=7,
+                device="cpu",
+                edge_mode="bidirectional",
+                use_node_type=True,
+                model=GraphSAGEClassifierConfig(hidden_dim=16, num_layers=2, dropout=0.1, readout="invalid"),
+                training=TrainingLoopConfig(
+                    batch_size=2,
+                    epochs=1,
+                    learning_rate=1e-3,
+                    weight_decay=1e-4,
+                    grad_clip=1.0,
+                    log_every_batches=1,
+                    num_workers=0,
+                    pin_memory=False,
+                    persistent_workers=False,
+                    prefetch_factor=2,
+                    use_amp=False,
+                ),
+            ).normalized()
+
+    def test_state_readout_requires_state_node_index(self) -> None:
+        metadata = load_prepared_metadata(self.prepared_root)
+        config = self._tiny_config(readout="state")
+        _, loaders = build_dataloaders(metadata, config)
+        batch = next(iter(loaders["train"]))
+        delattr(batch, "state_node_index")
+        model = build_model(metadata, config)
+
+        with self.assertRaisesRegex(ValueError, "state_node_index"):
+            model(batch)
 
     def test_eval_metrics_exclude_unknown_targets(self) -> None:
         logits = torch.tensor(

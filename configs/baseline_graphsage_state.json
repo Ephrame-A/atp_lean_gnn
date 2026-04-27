@@ -8,7 +8,8 @@
   "model": {
     "hidden_dim": 128,
     "num_layers": 4,
-    "dropout": 0.2
+    "dropout": 0.2,
+    "readout": "state"
   },
   "training": {
     "batch_size": 256,
