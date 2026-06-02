@@ -154,6 +154,17 @@ def proof_state_to_dag(state: str | ProofState) -> DAGBuilder:
     return dag
 
 
+def lemma_statement_to_dag(statement: str) -> DAGBuilder:
+    """Build a DAG for a lemma statement treated as a goal-only proof state."""
+    dag = DAGBuilder()
+    parser = ExprParser(dag)
+
+    goal_expr_node = parser.parse(statement)
+    goal_node = dag.get_or_create("Goal", (goal_expr_node,))
+    dag.get_or_create("State", (goal_node,))
+    return dag
+
+
 def dag_to_dict(dag: DAGBuilder, metadata: dict[str, object] | None = None) -> dict[str, object]:
     child_counts = dag.incoming_counts()
     parent_uses = dag.outgoing_counts()
