@@ -336,7 +336,7 @@ def compute_combined_loss(
         gt_k = padded_targets[:, step_k]  # [B]
 
         # Build mask: valid if (a) gt is resolvable and (b) tactic expects this argument
-        valid = gt_k >= 0
+        valid = (gt_k >= 0).clone()  # Ensure we have a standalone boolean tensor
         for b_idx in range(batch_size):
             if tactic_arity_per_sample[b_idx] <= step_k:
                 valid[b_idx] = False
