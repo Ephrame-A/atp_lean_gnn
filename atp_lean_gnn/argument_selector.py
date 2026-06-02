@@ -83,7 +83,7 @@ class ArgumentSelector(nn.Module):
             )
 
         # Padded node embedding matrix
-        padded_keys = torch.zeros(batch_size, max_nodes, hidden_dim, device=device)
+        padded_keys = torch.zeros(batch_size, max_nodes, hidden_dim, device=device, dtype=node_embeddings.dtype)
         padded_keys[batch_index, offsets] = node_embeddings
 
         # Padded premise mask (False = invalid ⇒ will be masked to -inf)

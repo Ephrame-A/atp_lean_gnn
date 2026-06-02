@@ -318,6 +318,7 @@ def load_baseline_config(
     *,
     prepared_root_override: str | Path | None = None,
     run_root_override: str | Path | None = None,
+    epochs_override: int | None = None,
 ) -> BaselineConfig:
     config_file = Path(config_path)
     if not config_file.exists():
@@ -328,6 +329,8 @@ def load_baseline_config(
         payload["prepared_root"] = str(prepared_root_override)
     if run_root_override is not None:
         payload["run_root"] = str(run_root_override)
+    if epochs_override is not None:
+        payload.setdefault("training", {})["epochs"] = epochs_override
     return BaselineConfig.from_dict(payload)
 
 
@@ -336,6 +339,7 @@ def load_pointer_config(
     *,
     prepared_root_override: str | Path | None = None,
     run_root_override: str | Path | None = None,
+    epochs_override: int | None = None,
 ) -> PointerConfig:
     config_file = Path(config_path)
     if not config_file.exists():
@@ -346,6 +350,8 @@ def load_pointer_config(
         payload["prepared_root"] = str(prepared_root_override)
     if run_root_override is not None:
         payload["run_root"] = str(run_root_override)
+    if epochs_override is not None:
+        payload.setdefault("training", {})["epochs"] = epochs_override
     return PointerConfig.from_dict(payload)
 
 
@@ -1326,6 +1332,12 @@ def build_train_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Resume an interrupted run from its existing run directory and last checkpoint",
     )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Optional override for the number of training epochs",
+    )
     return parser
 
 
@@ -1353,26 +1365,28 @@ def train_main(argv: list[str] | None = None) -> int:
             config_path = args.config or DEFAULT_BASELINE_CONFIG_PATH
             if args.resume_run_dir:
                 resume_config_path = Path(args.resume_run_dir) / "config.json"
-                config = load_baseline_config(resume_config_path)
+                config = load_baseline_config(resume_config_path, epochs_override=args.epochs)
                 train_baseline(config, resume_run_dir=args.resume_run_dir)
             else:
                 config = load_baseline_config(
                     config_path,
                     prepared_root_override=args.prepared_root,
                     run_root_override=args.run_root,
+                    epochs_override=args.epochs,
                 )
                 train_baseline(config)
         elif model_type == "pointer":
             config_path = args.config or DEFAULT_POINTER_CONFIG_PATH
             if args.resume_run_dir:
                 resume_config_path = Path(args.resume_run_dir) / "config.json"
-                config = load_pointer_config(resume_config_path)
+                config = load_pointer_config(resume_config_path, epochs_override=args.epochs)
                 train_pointer(config, resume_run_dir=args.resume_run_dir)
             else:
                 config = load_pointer_config(
                     config_path,
                     prepared_root_override=args.prepared_root,
                     run_root_override=args.run_root,
+                    epochs_override=args.epochs,
                 )
                 train_pointer(config)
         else:
