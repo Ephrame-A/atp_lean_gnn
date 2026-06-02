@@ -61,14 +61,17 @@ def _extract_arg_targets(batch, max_args: int, device: torch.device) -> torch.Te
             else:
                 return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
         else:
-            # Correct PyG unflattening
+            # Correct PyG unflattening with shifting to global batch coordinates
             targets = torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
             # Use split to get per-sample variable-length indices
             split_indices = torch.split(all_indices, counts)
+            # Use ptr to shift local indices to global batch node indices
+            ptr = batch.ptr.to(device=device)
             for i, sample_indices in enumerate(split_indices):
                 n = min(len(sample_indices), max_args)
                 if n > 0:
-                    targets[i, :n] = sample_indices[:n]
+                    # Shift local -> global
+                    targets[i, :n] = sample_indices[:n] + ptr[i]
             return targets
 
     # Fallback for older caches without arg_count or missing arg_node_indices
