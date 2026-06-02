@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    repo_root = Path(__file__).resolve().parents[1]
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+
 
 from .cache import (
     SplitReport,
@@ -21,6 +29,7 @@ from .cache import (
 from .dataset import DATASET_NAME, canonicalize_split_name, iter_dataset_rows
 from .preparation import prepare_example
 from .labels import build_tactic_vocab, encode_tactic_name
+from .lemma_corpus import load_lemma_name_index
 from .pyg import build_vocab_from_labels, dag_to_pyg
 from .reporting import console_print
 
@@ -34,6 +43,7 @@ class PreprocessConfig:
     splits: tuple[str, ...] = ("train", "val", "test")
     output_root: Path = DEFAULT_OUTPUT_ROOT
     sample_per_split: int | None = None
+    lemma_corpus_path: Path | None = None
     force: bool = False
 
 
@@ -109,6 +119,17 @@ def _resolve_arg_node_indices(dag, arg_tokens: list[str]) -> list[int]:
     return [label_to_id.get(token, -1) for token in arg_tokens]
 
 
+def _resolve_arg_lemma_ids(
+    arg_tokens: list[str],
+    lemma_name_index: dict[str, int] | None,
+) -> list[int]:
+    if not arg_tokens:
+        return []
+    if lemma_name_index is None:
+        return [-1 for _ in arg_tokens]
+    return [lemma_name_index.get(token, -1) for token in arg_tokens]
+
+
 def process_split(
     *,
     dataset_name: str,
@@ -117,6 +138,7 @@ def process_split(
     output_root: Path,
     node_vocab: dict[str, int],
     tactic_vocab: dict[str, int],
+    lemma_name_index: dict[str, int] | None,
 ) -> tuple[SplitReport, dict[str, object]]:
     import torch
 
@@ -171,7 +193,12 @@ def process_split(
 
         _, arg_tokens = parse_tactic_arguments(example.row.tactic)
         arg_indices = _resolve_arg_node_indices(example.dag, arg_tokens)
+        arg_lemma_ids = _resolve_arg_lemma_ids(arg_tokens, lemma_name_index)
+        for idx, node_id in enumerate(arg_indices):
+            if node_id >= 0 and idx < len(arg_lemma_ids):
+                arg_lemma_ids[idx] = -1
         data.arg_node_indices = torch.tensor(arg_indices, dtype=torch.long) if arg_indices else torch.tensor([], dtype=torch.long)
+        data.arg_lemma_ids = torch.tensor(arg_lemma_ids, dtype=torch.long) if arg_lemma_ids else torch.tensor([], dtype=torch.long)
         data.arg_count = len(arg_indices)
         # --------------------------------------------------------------
 
@@ -216,6 +243,10 @@ def run_preprocessing(config: PreprocessConfig) -> dict[str, object]:
         f"success={train_scan.success_count}, failure={train_scan.failure_count}"
     )
 
+    lemma_name_index = None
+    if config.lemma_corpus_path is not None:
+        lemma_name_index = load_lemma_name_index(config.lemma_corpus_path)
+
     prepare_output_root(output_root, splits=list(config.splits), force=config.force)
     write_vocab(output_root, name="node_vocab.json", vocab=node_vocab)
     write_vocab(output_root, name="tactic_vocab.json", vocab=tactic_vocab)
@@ -231,6 +262,7 @@ def run_preprocessing(config: PreprocessConfig) -> dict[str, object]:
             output_root=output_root,
             node_vocab=node_vocab,
             tactic_vocab=tactic_vocab,
+            lemma_name_index=lemma_name_index,
         )
         split_reports[split] = report
         manifests[split] = manifest
@@ -265,6 +297,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--splits", type=str, default="train,val,test", help="Comma-separated splits to preprocess (must include train)")
     parser.add_argument("--output-root", type=str, default=str(DEFAULT_OUTPUT_ROOT), help="Output directory for prepared artifacts")
     parser.add_argument("--sample-per-split", type=int, default=None, help="Optional limit of examples to process per split")
+    parser.add_argument("--lemma-corpus", type=str, default=None, help="Optional lemma corpus JSONL for library premise labels")
     parser.add_argument("--force", action="store_true", help="Overwrite the output root if it already exists")
     return parser
 
@@ -279,6 +312,7 @@ def main(argv: list[str] | None = None) -> int:
             splits=tuple(_normalize_splits(args.splits)),
             output_root=Path(args.output_root),
             sample_per_split=args.sample_per_split,
+            lemma_corpus_path=None if args.lemma_corpus is None else Path(args.lemma_corpus),
             force=args.force,
         )
         run_preprocessing(config)
@@ -287,3 +321,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
