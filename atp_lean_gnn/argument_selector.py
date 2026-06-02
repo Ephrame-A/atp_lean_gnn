@@ -358,4 +358,5 @@ def compute_combined_loss(
         "tactic_loss": float(tactic_loss.item()),
         "arg_loss": float(arg_loss.item()),
         "total_loss": float(total_loss.item()),
+        "valid_arg_steps": len(arg_losses),
     }

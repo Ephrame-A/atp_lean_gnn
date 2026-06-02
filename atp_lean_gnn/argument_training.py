@@ -135,10 +135,18 @@ def train_one_epoch_with_args(
             )
 
         grad_scaler.scale(loss).backward()
-        grad_scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-        grad_scaler.step(optimizer)
-        grad_scaler.update()
+        if torch.isfinite(loss):
+            grad_scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            grad_scaler.step(optimizer)
+            grad_scaler.update()
+        else:
+            print(f"  WARNING: Skipping batch {batch_index} due to non-finite loss: {loss.item()}")
+            # Enhanced debug info
+            with torch.no_grad():
+                print(f"    tactic_loss={metrics['tactic_loss']:.4f}, arg_loss={metrics['arg_loss']:.4f}")
+                # Check for NaNs in gradients/weights if needed, but here we just skip the step
+            optimizer.zero_grad(set_to_none=True)
 
         batch_size = int(targets.numel())
         total_tactic_loss += metrics["tactic_loss"] * batch_size
