@@ -48,35 +48,31 @@ def _extract_tactic_names(batch) -> list[str]:
 
 
 def _extract_arg_targets(batch, max_args: int, device: torch.device) -> torch.Tensor:
-    """Extract ground-truth argument node indices ``[B, max_args]``, padded with -1."""
-    if hasattr(batch, "arg_node_indices") and hasattr(batch, "arg_count"):
-        batch_size = int(batch.y.size(0))
-        all_indices = batch.arg_node_indices.to(device=device, dtype=torch.long)
-        counts = batch.arg_count.tolist()
+    """Extract ground-truth argument node indices [B, max_args], padded with -1."""
+    if not (hasattr(batch, "arg_node_indices") and hasattr(batch, "arg_count")):
+        batch_size = int(batch.y.size(0)) if hasattr(batch, "y") else 1
+        return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
 
-        if len(counts) != batch_size:
-            # Fallback if arg_count is somehow not entry-per-sample
-            if all_indices.dim() == 2 and all_indices.size(0) == batch_size:
-                targets = all_indices
-            else:
-                return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
-        else:
-            # Correct PyG unflattening with shifting to global batch coordinates
-            targets = torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
-            # Use split to get per-sample variable-length indices
-            split_indices = torch.split(all_indices, counts)
-            # Use ptr to shift local indices to global batch node indices
-            ptr = batch.ptr.to(device=device)
-            for i, sample_indices in enumerate(split_indices):
-                n = min(len(sample_indices), max_args)
-                if n > 0:
-                    # Shift local -> global
-                    targets[i, :n] = sample_indices[:n] + ptr[i]
-            return targets
+    batch_size = int(batch.y.size(0))
+    all_indices = batch.arg_node_indices.to(device=device, dtype=torch.long)
+    counts = batch.arg_count.tolist()
 
-    # Fallback for older caches without arg_count or missing arg_node_indices
-    batch_size = int(batch.y.size(0)) if hasattr(batch, "y") else 1
-    return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    if len(counts) != batch_size:
+        return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+
+    targets = torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    split_indices = torch.split(all_indices, counts)
+    ptr = batch.ptr.to(device=device)
+
+    for i, sample_indices in enumerate(split_indices):
+        n = min(len(sample_indices), max_args)
+        if n > 0:
+            shifted = sample_indices[:n].clone()
+            valid = shifted >= 0
+            shifted[valid] = shifted[valid] + ptr[i]
+            targets[i, :n] = shifted
+
+    return targets
 
 
 def train_one_epoch_with_args(
@@ -132,6 +128,9 @@ def train_one_epoch_with_args(
                 tactic_arity_per_sample=tactic_arities,
                 arg_loss_weight=arg_loss_weight,
                 unknown_tactic_id=unknown_tactic_id,
+                # Diagnosis fields
+                node_labels=batch.x,
+                node_types=batch.node_type
             )
 
         grad_scaler.scale(loss).backward()
