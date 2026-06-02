@@ -49,22 +49,29 @@ def _extract_tactic_names(batch) -> list[str]:
 
 def _extract_arg_targets(batch, max_args: int, device: torch.device) -> torch.Tensor:
     """Extract ground-truth argument node indices ``[B, max_args]``, padded with -1."""
-    if hasattr(batch, "arg_node_indices"):
-        targets = batch.arg_node_indices.to(device=device, dtype=torch.long)
-        if targets.dim() == 1:
-            targets = targets.unsqueeze(0)
-        # Pad or trim to max_args columns
-        b, current_cols = targets.shape
-        if current_cols < max_args:
-            padding = torch.full(
-                (b, max_args - current_cols), -1, dtype=torch.long, device=device
-            )
-            targets = torch.cat([targets, padding], dim=1)
-        elif current_cols > max_args:
-            targets = targets[:, :max_args]
-        return targets
+    if hasattr(batch, "arg_node_indices") and hasattr(batch, "arg_count"):
+        batch_size = int(batch.y.size(0))
+        all_indices = batch.arg_node_indices.to(device=device, dtype=torch.long)
+        counts = batch.arg_count.tolist()
 
-    # No ground-truth args available — return all -1
+        if len(counts) != batch_size:
+            # Fallback if arg_count is somehow not entry-per-sample
+            if all_indices.dim() == 2 and all_indices.size(0) == batch_size:
+                targets = all_indices
+            else:
+                return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+        else:
+            # Correct PyG unflattening
+            targets = torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+            # Use split to get per-sample variable-length indices
+            split_indices = torch.split(all_indices, counts)
+            for i, sample_indices in enumerate(split_indices):
+                n = min(len(sample_indices), max_args)
+                if n > 0:
+                    targets[i, :n] = sample_indices[:n]
+            return targets
+
+    # Fallback for older caches without arg_count or missing arg_node_indices
     batch_size = int(batch.y.size(0)) if hasattr(batch, "y") else 1
     return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
 
