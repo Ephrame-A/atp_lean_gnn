@@ -14,11 +14,12 @@ from .reporting import console_print
 from .training import (
     _load_checkpoint,
     _use_cuda_amp,
-    build_model,
+    build_baseline_model,
     load_baseline_config,
     load_prepared_metadata,
     resolve_device,
     PreparedGraphDataset,
+    REQUIRED_DATA_FIELDS,
 )
 
 
@@ -87,7 +88,12 @@ def load_metrics_history(run_dir: str | Path) -> list[dict[str, object]]:
 def _build_analysis_loader(run_dir: Path, split: str):
     config = load_baseline_config(run_dir / "config.json")
     metadata = load_prepared_metadata(config.prepared_root)
-    dataset = PreparedGraphDataset(metadata, split=split, edge_mode=config.edge_mode)
+    dataset = PreparedGraphDataset(
+        metadata,
+        split=split,
+        edge_mode=config.edge_mode,
+        required_fields=REQUIRED_DATA_FIELDS,
+    )
 
     # Keep analysis loaders single-process on Windows. These reports are
     # throughput-insensitive, and this avoids multiprocessing permission issues
@@ -235,7 +241,7 @@ def analyze_saved_run(
 
     config, metadata, loader = _build_analysis_loader(run_directory, canonical_split)
     device = resolve_device(config.device)
-    model = build_model(metadata, config).to(device)
+    model = build_baseline_model(metadata, config).to(device)
     checkpoint_path = run_directory / "best.pt"
     checkpoint = _load_checkpoint(checkpoint_path, device=device)
     model.load_state_dict(checkpoint["model_state_dict"])
