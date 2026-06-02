@@ -25,3 +25,5 @@ __pycache__
 *.rej
 artifacts/
 runs/
+.pytest_cache/
+
