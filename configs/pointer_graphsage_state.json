@@ -9,12 +9,12 @@
   "max_args": 3,
   "arg_loss_weight": 0.5,
   "model": {
-    "hidden_dim": 128,
+    "hidden_dim": 512,
     "num_layers": 4,
     "dropout": 0.2
   },
   "training": {
-    "batch_size": 64,
+    "batch_size": 256,
     "epochs": 20,
     "learning_rate": 0.001,
     "weight_decay": 0.0001,
