@@ -88,3 +88,42 @@ Contains `InferencePipeline`.
 
 ---
 
+## Quick Start / Execution Commands
+
+Here are the exact commands to run the pipeline end-to-end:
+
+**1. Extract Lemma Corpus:**
+```bash
+python scripts/extract_lemma_corpus_from_hf.py \
+    --dataset artifacts/leandojo_data/leandojo_benchmark_4/random/train.json \
+    --output artifacts/lemmas/v1/corpus/lemmas.jsonl
+```
+
+**2. Build FAISS Index (Requires a frozen baseline checkpoint):**
+```bash
+python scripts/build_lemma_index.py \
+    --corpus artifacts/lemmas/v1/corpus/lemmas.jsonl \
+    --config configs/pointer_graphsage_state.json \
+    --checkpoint run_20260602_155913/best.pt \
+    --output-dir artifacts/lemmas/v1/index
+```
+
+**3. Train the Premise Scorer:**
+```bash
+python scripts/train_scorer.py \
+    --config configs/pointer_graphsage_state.json \
+    --checkpoint runs/pointer_gnn/baseline_best.pt \
+    --index-path artifacts/lemmas/v1/index
+```
+
+**4. Run Inference (Evaluation):**
+```bash
+python scripts/run_inference.py \
+    --config runs/premise_gnn/run_latest/config.json \
+    --checkpoint runs/premise_gnn/run_latest/best.pt \
+    --index-path artifacts/lemmas/v1/index \
+    --corpus artifacts/lemmas/v1/corpus/lemmas.jsonl \
+    --test-file path/to/proof_state.json
+```
+
+---

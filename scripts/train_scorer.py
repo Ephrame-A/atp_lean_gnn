@@ -50,7 +50,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to baseline checkpoint (best.pt)")
     parser.add_argument("--index-path", type=str, required=True, help="Path to FAISS index built from the baseline")
     parser.add_argument("--run-root", type=str, default="runs/premise_gnn", help="Directory to save run logs and checkpoints")
-    parser.add_argument("--freeze-encoder", action="store_true", help="Freeze the GNN backbone and only train the scorer")
     args = parser.parse_args(argv)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -99,20 +98,32 @@ def main(argv: list[str] | None = None) -> int:
             adjusted_state_dict[k] = v
             
     model.load_state_dict(adjusted_state_dict, strict=False)
-    
-    if args.freeze_encoder:
-        console_print("Freezing GNN encoder...")
-        for param in model.parameters():
-            param.requires_grad = False
-            
+
+    # Freeze the GNN backbone (keeps embeddings compatible with FAISS index)
+    for param in model.backbone.parameters():
+        param.requires_grad = False
+
     model = model.to(device)
 
     # Build Premise Scorer
     scorer = PremiseScorer(hidden_dim=config.model.hidden_dim, mode=p_config.scoring_mode)
     scorer = scorer.to(device)
 
+    # Only train: tactic_embedding, argument_selector, and scorer
+    trainable_params = (
+        list(model.tactic_embedding.parameters())
+        + list(model.argument_selector.parameters())
+        + list(scorer.parameters())
+    )
+    frozen_count = sum(p.numel() for p in model.backbone.parameters())
+    trainable_count = sum(p.numel() for p in trainable_params)
+    console_print(
+        f"Parameters — frozen backbone: {frozen_count:,}, "
+        f"trainable (pointer + scorer + tactic_emb): {trainable_count:,}"
+    )
+
     optimizer = AdamW(
-        [p for p in list(model.parameters()) + list(scorer.parameters()) if p.requires_grad],
+        trainable_params,
         lr=config.training.learning_rate,
         weight_decay=config.training.weight_decay,
     )

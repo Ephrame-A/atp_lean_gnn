@@ -9,7 +9,7 @@
   "max_args": 3,
   "arg_loss_weight": 0.5,
   "model": {
-    "hidden_dim": 128,
+    "hidden_dim": 512,
     "num_layers": 4,
     "dropout": 0.2
   },

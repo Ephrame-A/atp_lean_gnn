@@ -112,6 +112,7 @@ def train_one_epoch_with_premises(
 ) -> dict[str, float | int]:
     """Train one epoch with combined tactic + argument + premise ranking loss."""
     model.train()
+    model.backbone.eval()  # frozen backbone stays in eval mode
     scorer.train()
 
     total_tactic_loss = 0.0
@@ -159,9 +160,12 @@ def train_one_epoch_with_premises(
                 unknown_tactic_id=unknown_tactic_id,
             )
 
-            # Get embeddings for premise scoring
-            node_embeddings = model.backbone.encode_nodes(batch)
-            state_emb = model.backbone.readout(node_embeddings, batch)
+            # Recompute embeddings (detached) for the premise scoring branch
+            with torch.no_grad():
+                node_embeddings = model.backbone.encode_nodes(batch)
+                state_emb = model.backbone.readout(node_embeddings, batch)
+            node_embeddings = node_embeddings.detach()
+            state_emb = state_emb.detach()
 
             # Get tactic embeddings
             tactic_emb = model.tactic_embedding(targets)
@@ -197,10 +201,8 @@ def train_one_epoch_with_premises(
 
         grad_scaler.scale(total_loss).backward()
         grad_scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(
-            list(model.parameters()) + list(scorer.parameters()),
-            grad_clip,
-        )
+        trainable_params = [p for p in list(model.parameters()) + list(scorer.parameters()) if p.requires_grad]
+        torch.nn.utils.clip_grad_norm_(trainable_params, grad_clip)
         grad_scaler.step(optimizer)
         grad_scaler.update()
 
@@ -304,8 +306,9 @@ def evaluate_model_with_premises(
                 unknown_tactic_id=unknown_tactic_id,
             )
 
-            node_embeddings = model.backbone.encode_nodes(batch)
-            state_emb = model.backbone.readout(node_embeddings, batch)
+            with torch.no_grad():
+                node_embeddings = model.backbone.encode_nodes(batch)
+                state_emb = model.backbone.readout(node_embeddings, batch)
             tactic_ids = tactic_logits.argmax(dim=1)
             tactic_emb = model.tactic_embedding(tactic_ids)
             premise_mask = batch.premise_mask.to(
