@@ -73,12 +73,12 @@ class LemmaIndex:
 
     def search(
         self,
-        goal_vecs: np.ndarray | "torch.Tensor",
+        state_vecs: np.ndarray | "torch.Tensor",
         *,
         k: int = 500,
     ) -> tuple[list[list[int]], np.ndarray, np.ndarray]:
         """Return (lemma_ids, lemma_vecs, scores) for each query."""
-        query = self._to_numpy(goal_vecs)
+        query = self._to_numpy(state_vecs)
         if self.normalize_queries:
             query = _normalize_rows(query)
 
@@ -88,15 +88,15 @@ class LemmaIndex:
         return lemma_ids, lemma_vecs, scores
 
     @staticmethod
-    def _to_numpy(goal_vecs: np.ndarray | "torch.Tensor") -> np.ndarray:
-        if isinstance(goal_vecs, np.ndarray):
-            array = goal_vecs
+    def _to_numpy(state_vecs: np.ndarray | "torch.Tensor") -> np.ndarray:
+        if isinstance(state_vecs, np.ndarray):
+            array = state_vecs
         else:
             import torch
 
-            if not torch.is_tensor(goal_vecs):
-                raise TypeError("goal_vecs must be a numpy array or torch Tensor.")
-            array = goal_vecs.detach().cpu().numpy()
+            if not torch.is_tensor(state_vecs):
+                raise TypeError("state_vecs must be a numpy array or torch Tensor.")
+            array = state_vecs.detach().cpu().numpy()
         if array.dtype != np.float32:
             array = array.astype(np.float32)
         return array

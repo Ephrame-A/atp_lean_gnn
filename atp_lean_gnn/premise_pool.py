@@ -11,7 +11,7 @@ from torch import Tensor
 class LemmaIndexLike(Protocol):
     def search(
         self,
-        goal_vecs: Tensor,
+        state_vecs: Tensor,
         *,
         k: int,
     ) -> tuple[list[list[int]], np.ndarray, np.ndarray]:
@@ -28,7 +28,7 @@ class CandidatePool:
 
 
 def build_unified_pools(
-    goal_vecs: Tensor,
+    state_vecs: Tensor,
     node_embeddings: Tensor,
     premise_mask: Tensor,
     batch_index: Tensor,
@@ -37,15 +37,15 @@ def build_unified_pools(
     k: int = 500,
 ) -> list[CandidatePool]:
     """Return per-graph candidate pools combining local and library premises."""
-    if goal_vecs.dim() != 2:
-        raise ValueError("goal_vecs must be [batch, hidden_dim].")
+    if state_vecs.dim() != 2:
+        raise ValueError("state_vecs must be [batch, hidden_dim].")
     if node_embeddings.dim() != 2:
         raise ValueError("node_embeddings must be [total_nodes, hidden_dim].")
 
     device = node_embeddings.device
-    batch_size = int(goal_vecs.size(0))
+    batch_size = int(state_vecs.size(0))
 
-    lemma_ids_batch, lemma_vecs_batch, _scores = lemma_index.search(goal_vecs, k=k)
+    lemma_ids_batch, lemma_vecs_batch, _scores = lemma_index.search(state_vecs, k=k)
     if len(lemma_ids_batch) != batch_size:
         raise ValueError("lemma_index returned a batch size mismatch.")
 
