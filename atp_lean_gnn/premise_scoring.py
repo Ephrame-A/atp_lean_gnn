@@ -31,6 +31,8 @@ class PremiseScorerConfig:
     scoring_mode: str = "dot"  # "dot" or "mlp"
     tactic_conditioning: str = "soft"  # "soft" or "hard"
     premise_loss_weight: float = 0.3
+    k: int = 500
+    rerank_size: int = 50
 
     def to_dict(self) -> dict[str, object]:
         return {

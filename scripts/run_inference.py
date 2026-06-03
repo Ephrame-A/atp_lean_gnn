@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """Run tactic inference on a single proof state interactively."""
 
 import argparse
@@ -16,9 +16,9 @@ if __package__ in {None, ""}:
 from atp_lean_gnn.cli import DEMO_STATE
 from atp_lean_gnn.inference import InferencePipeline
 from atp_lean_gnn.lemma_index import LemmaIndex
-from atp_lean_gnn.training import load_prepared_metadata, load_baseline_config
-from atp_lean_gnn.model import build_model
+from atp_lean_gnn.training import load_prepared_metadata, load_baseline_config, build_model
 from atp_lean_gnn.premise_scoring import PremiseScorer
+from atp_lean_gnn.lemma_corpus import load_lemma_corpus
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to best.pt checkpoint")
     parser.add_argument("--scorer-mode", type=str, default="dot", choices=["dot", "mlp"], help="Scorer mode")
     parser.add_argument("--index-path", type=str, help="Path to FAISS index. If missing, retrieval will return nothing.")
+    parser.add_argument("--corpus-path", type=str, help="Path to lemmas.jsonl for decoding retrieved lemma IDs to names.")
     parser.add_argument("--k", type=int, default=500, help="Number of lemmas to retrieve")
     parser.add_argument("--state", type=str, default=DEMO_STATE, help="Raw Lean proof state string")
     args = parser.parse_args(argv)
@@ -44,21 +45,31 @@ def main(argv: list[str] | None = None) -> int:
     metadata = load_prepared_metadata(config.prepared_root)
 
     # Build and load model
-    model = build_model(metadata, config)
+    from atp_lean_gnn.argument_selector import TacticWithArgsClassifier
+    
+    model = TacticWithArgsClassifier(
+        num_node_labels=len(metadata.node_vocab),
+        num_tactics=len(metadata.tactic_vocab),
+        hidden_dim=config.model.hidden_dim,
+        num_layers=config.model.num_layers,
+        dropout=config.model.dropout,
+        use_node_type=config.use_node_type,
+        max_args=getattr(config, "max_args", 3),
+    )
+    
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
     
-    # Check if the checkpoint contains a full model or just the state dict
-    if "model_state_dict" in ckpt:
-        # Checkpoint from our custom training loop
-        # It might be a TacticWithArgsClassifier or GraphSAGEStateClassifier
-        # We handle this by loading into whatever build_model returned.
-        # But wait, build_model returns TacticWithArgsClassifier if config.model_type == "pointer",
-        # else GraphSAGEStateClassifier.
-        model.load_state_dict(ckpt["model_state_dict"])
-    else:
-        # Bare state dict
-        model.load_state_dict(ckpt)
-    
+    # Adjust state dict keys if they come from a pure baseline (GraphSAGEStateClassifier)
+    # The pure baseline keys don't have the "backbone." prefix.
+    adjusted_state_dict = {}
+    for k, v in state_dict.items():
+        if not k.startswith("backbone.") and not k.startswith("tactic_embedding.") and not k.startswith("argument_selector."):
+            adjusted_state_dict[f"backbone.{k}"] = v
+        else:
+            adjusted_state_dict[k] = v
+            
+    model.load_state_dict(adjusted_state_dict, strict=False)
     model = model.to(device)
 
     # Build scorer (using randomly initialized weights for demo if not loaded)
@@ -70,14 +81,30 @@ def main(argv: list[str] | None = None) -> int:
         index_path = Path(args.index_path)
         if index_path.exists():
             lemma_index = LemmaIndex.load(index_path)
-            print(f"Loaded index with {len(lemma_index)} lemmas.")
+            print(f"Loaded index with {len(lemma_index.lemma_ids)} lemmas.")
         else:
             print(f"WARNING: index path {index_path} not found.")
             
     if lemma_index is None:
         # Create an empty index as fallback
-        from atp_lean_gnn.lemma_index import LemmaIndexConfig
-        lemma_index = LemmaIndex(LemmaIndexConfig(hidden_dim=config.model.hidden_dim))
+        import faiss
+        import numpy as np
+        d = config.model.hidden_dim
+        lemma_index = LemmaIndex(
+            index=faiss.IndexFlatL2(d),
+            lemma_ids=[],
+            lemma_vectors=np.empty((0, d), dtype=np.float32)
+        )
+
+    lemma_corpus = None
+    if args.corpus_path:
+        corpus_path = Path(args.corpus_path)
+        if corpus_path.exists():
+            records = load_lemma_corpus(corpus_path)
+            lemma_corpus = {record.lemma_id: record for record in records}
+            print(f"Loaded corpus with {len(lemma_corpus)} lemmas.")
+        else:
+            print(f"WARNING: corpus path {corpus_path} not found.")
 
     # Initialize Pipeline
     pipeline = InferencePipeline(
@@ -88,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         tactic_vocab=metadata.tactic_vocab,
         device=device,
         k=args.k,
+        lemma_corpus=lemma_corpus,
     )
 
     print("\n--- Input State ---")

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """Train the premise scoring head on top of a frozen or fine-tuned baseline model.
 
 Usage::
@@ -25,11 +25,10 @@ if __package__ in {None, ""}:
         sys.path.insert(0, repo_root_str)
 
 from atp_lean_gnn.lemma_index import LemmaIndex
-from atp_lean_gnn.model import build_model
 from atp_lean_gnn.premise_scoring import PremiseScorer, PremiseScorerConfig
 from atp_lean_gnn.premise_training import evaluate_model_with_premises, train_one_epoch_with_premises
 from atp_lean_gnn.reporting import console_print
-from atp_lean_gnn.training import build_dataloaders, load_baseline_config, load_prepared_metadata
+from atp_lean_gnn.training import build_dataloaders, load_baseline_config, load_prepared_metadata, build_model
 
 
 def _create_run_dir(run_root: Path) -> Path:
@@ -75,13 +74,31 @@ def main(argv: list[str] | None = None) -> int:
     # Build Dataloaders
     datasets, loaders = build_dataloaders(metadata, config)
 
-    # Load baseline model
-    model = build_model(metadata, config)
+    # Load baseline model and wrap it in TacticWithArgsClassifier
+    from atp_lean_gnn.argument_selector import TacticWithArgsClassifier
+    
+    model = TacticWithArgsClassifier(
+        num_node_labels=len(metadata.node_vocab),
+        num_tactics=len(metadata.tactic_vocab),
+        hidden_dim=config.model.hidden_dim,
+        num_layers=config.model.num_layers,
+        dropout=config.model.dropout,
+        use_node_type=config.use_node_type,
+        max_args=getattr(config, "max_args", 3),
+    )
+    
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
-    if "model_state_dict" in ckpt:
-        model.load_state_dict(ckpt["model_state_dict"])
-    else:
-        model.load_state_dict(ckpt)
+    state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+    
+    # Adjust state dict keys if they come from a pure baseline (GraphSAGEStateClassifier)
+    adjusted_state_dict = {}
+    for k, v in state_dict.items():
+        if not k.startswith("backbone.") and not k.startswith("tactic_embedding.") and not k.startswith("argument_selector."):
+            adjusted_state_dict[f"backbone.{k}"] = v
+        else:
+            adjusted_state_dict[k] = v
+            
+    model.load_state_dict(adjusted_state_dict, strict=False)
     
     if args.freeze_encoder:
         console_print("Freezing GNN encoder...")

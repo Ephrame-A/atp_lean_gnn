@@ -40,6 +40,7 @@ class InferencePipeline:
         tactic_vocab: dict[str, int],
         device: torch.device,
         k: int = 500,
+        lemma_corpus: dict[int, LemmaRecord] | None = None,
     ) -> None:
         self.model = model
         self.scorer = scorer
@@ -48,6 +49,7 @@ class InferencePipeline:
         self.tactic_vocab = tactic_vocab
         self.device = device
         self.k = k
+        self.lemma_corpus = lemma_corpus
 
         # Invert tactic vocab for decoding
         self.id_to_tactic = {idx: name for name, idx in tactic_vocab.items()}
@@ -65,6 +67,13 @@ class InferencePipeline:
         dag = proof_state_to_dag(state)
         data = dag_to_pyg(dag, self.node_vocab)
         
+        # Find the root State node for graph readout
+        try:
+            state_idx = next(i for i, n in enumerate(dag.nodes) if n.label == "State")
+        except StopIteration:
+            state_idx = 0
+        data.state_node_index = torch.tensor([state_idx], dtype=torch.long)
+        
         # Build premise mask for local candidates
         premise_mask = build_premise_mask(dag)
         data.premise_mask = torch.tensor(premise_mask, dtype=torch.bool)
@@ -77,7 +86,7 @@ class InferencePipeline:
         node_embeddings = self.model.backbone.encode_nodes(batch)
         state_emb = self.model.backbone.readout(node_embeddings, batch)
         
-        tactic_logits = self.model.tactic_head(state_emb)
+        tactic_logits = self.model.backbone.classifier(state_emb)
         tactic_id = tactic_logits.argmax(dim=-1).item()
         tactic_name = self.id_to_tactic.get(tactic_id, "<UNK>")
         
@@ -119,8 +128,10 @@ class InferencePipeline:
                 node = dag.nodes[cid]
                 arg_str = _resolve_local_node_name(node, dag)
             else:
-                lemma_record = self.lemma_index.get_lemma(cid)
-                arg_str = lemma_record.name if lemma_record else f"<lemma_{cid}>"
+                if self.lemma_corpus and cid in self.lemma_corpus:
+                    arg_str = self.lemma_corpus[cid].name
+                else:
+                    arg_str = f"<lemma_{cid}>"
                 
             arguments.append(arg_str)
             

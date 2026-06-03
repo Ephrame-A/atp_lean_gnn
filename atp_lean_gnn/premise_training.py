@@ -54,42 +54,40 @@ def _extract_arg_targets(
     batch, max_args: int, device: torch.device
 ) -> torch.Tensor:
     """Extract ground-truth argument node indices [B, max_args], padded with -1."""
-    if hasattr(batch, "arg_node_indices"):
-        targets = batch.arg_node_indices.to(device=device, dtype=torch.long)
-        if targets.dim() == 1:
-            targets = targets.unsqueeze(0)
-        b, current_cols = targets.shape
-        if current_cols < max_args:
-            padding = torch.full(
-                (b, max_args - current_cols), -1, dtype=torch.long, device=device
-            )
-            targets = torch.cat([targets, padding], dim=1)
-        elif current_cols > max_args:
-            targets = targets[:, :max_args]
-        return targets
     batch_size = int(batch.y.size(0)) if hasattr(batch, "y") else 1
-    return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    targets = torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    
+    if hasattr(batch, "arg_node_indices") and hasattr(batch, "arg_count"):
+        flat_targets = batch.arg_node_indices.to(device=device, dtype=torch.long)
+        counts = batch.arg_count.tolist()
+        offset = 0
+        for i, count in enumerate(counts):
+            n_copy = min(count, max_args)
+            if n_copy > 0:
+                targets[i, :n_copy] = flat_targets[offset : offset + n_copy]
+            offset += count
+            
+    return targets
 
 
 def _extract_arg_lemma_ids(
     batch, max_args: int, device: torch.device
 ) -> torch.Tensor:
     """Extract ground-truth lemma IDs [B, max_args], padded with -1."""
-    if hasattr(batch, "arg_lemma_ids"):
-        targets = batch.arg_lemma_ids.to(device=device, dtype=torch.long)
-        if targets.dim() == 1:
-            targets = targets.unsqueeze(0)
-        b, current_cols = targets.shape
-        if current_cols < max_args:
-            padding = torch.full(
-                (b, max_args - current_cols), -1, dtype=torch.long, device=device
-            )
-            targets = torch.cat([targets, padding], dim=1)
-        elif current_cols > max_args:
-            targets = targets[:, :max_args]
-        return targets
     batch_size = int(batch.y.size(0)) if hasattr(batch, "y") else 1
-    return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    targets = torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    
+    if hasattr(batch, "arg_lemma_ids") and hasattr(batch, "arg_count"):
+        flat_targets = batch.arg_lemma_ids.to(device=device, dtype=torch.long)
+        counts = batch.arg_count.tolist()
+        offset = 0
+        for i, count in enumerate(counts):
+            n_copy = min(count, max_args)
+            if n_copy > 0:
+                targets[i, :n_copy] = flat_targets[offset : offset + n_copy]
+            offset += count
+            
+    return targets
 
 
 def train_one_epoch_with_premises(
