@@ -335,11 +335,14 @@ def compute_combined_loss(
 
         gt_k = padded_targets[:, step_k]  # [B]
 
-        # Build mask: valid if (a) gt is resolvable and (b) tactic expects this argument
         valid = gt_k >= 0
         for b_idx in range(batch_size):
             if tactic_arity_per_sample[b_idx] <= step_k:
                 valid[b_idx] = False
+            elif valid[b_idx]:
+                # Skip target if it was masked out by premise_mask
+                if torch.isneginf(arg_logits_k[b_idx, gt_k[b_idx]]):
+                    valid[b_idx] = False
 
         if not valid.any():
             continue
