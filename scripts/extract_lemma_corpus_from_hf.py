@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Extract a lemma corpus from the LeanDojo benchmark on HuggingFace.
 
 This script streams the LeanDojo benchmark dataset, collects unique theorem

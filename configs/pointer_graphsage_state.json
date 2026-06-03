@@ -3,7 +3,7 @@
   "prepared_root": "artifacts/prepared/v1",
   "run_root": "runs/pointer_gnn",
   "seed": 42,
-  "device": "cuda",
+  "device": "auto",
   "edge_mode": "bidirectional",
   "use_node_type": true,
   "max_args": 3,
