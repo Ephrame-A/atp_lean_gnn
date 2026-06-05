@@ -1,5 +1,5 @@
 {
-  "k": 500,
+  "k": 200,
   "rerank_size": 50,
   "scoring_mode": "dot",
   "tactic_conditioning": "soft",

@@ -49,7 +49,7 @@ def build_unified_pools(
     if len(lemma_ids_batch) != batch_size:
         raise ValueError("lemma_index returned a batch size mismatch.")
 
-    lemma_vecs_batch = torch.from_numpy(lemma_vecs_batch).to(device=device)
+    lemma_vecs_batch = torch.from_numpy(lemma_vecs_batch).to(device=device, dtype=node_embeddings.dtype)
 
     pools: list[CandidatePool] = []
     for b in range(batch_size):

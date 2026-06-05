@@ -99,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
             
     model.load_state_dict(adjusted_state_dict, strict=False)
 
+    with torch.no_grad():
+        model.tactic_embedding.weight.copy_(model.backbone.classifier.weight)
+
     # Freeze the GNN backbone (keeps embeddings compatible with FAISS index)
     for param in model.backbone.parameters():
         param.requires_grad = False

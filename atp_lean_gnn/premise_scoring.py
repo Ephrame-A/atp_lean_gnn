@@ -31,7 +31,7 @@ class PremiseScorerConfig:
     scoring_mode: str = "dot"  # "dot" or "mlp"
     tactic_conditioning: str = "soft"  # "soft" or "hard"
     premise_loss_weight: float = 0.3
-    k: int = 500
+    k: int = 200
     rerank_size: int = 50
 
     def to_dict(self) -> dict[str, object]:
@@ -66,6 +66,7 @@ class PremiseScorer(nn.Module):
 
         # Project [goal_vec; tactic_emb] → hidden_dim
         self.query_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.key_proj = nn.Linear(hidden_dim, hidden_dim)
 
         if mode == "mlp":
             self.scorer = nn.Sequential(
@@ -104,8 +105,8 @@ class PremiseScorer(nn.Module):
         goal = goal_vec.view(-1)
         tactic = tactic_emb.view(-1)
 
-        # Project the conditioned query
-        query = self.query_proj(torch.cat([goal, tactic], dim=0))  # [H]
+        query = self.query_proj(torch.cat([goal, tactic], dim=0))
+        candidate_vectors = self.key_proj(candidate_vectors)
 
         if self.mode == "dot":
             # Scaled dot-product

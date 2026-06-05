@@ -83,7 +83,7 @@ class ArgumentSelector(nn.Module):
             )
 
         # Padded node embedding matrix
-        padded_keys = torch.zeros(batch_size, max_nodes, hidden_dim, device=device)
+        padded_keys = torch.zeros(batch_size, max_nodes, hidden_dim, device=device, dtype=node_embeddings.dtype)
         padded_keys[batch_index, offsets] = node_embeddings
 
         # Padded premise mask (False = invalid ⇒ will be masked to -inf)
@@ -347,7 +347,7 @@ def compute_combined_loss(
         if not valid.any():
             continue
 
-        step_loss = F.cross_entropy(arg_logits_k[valid], gt_k[valid])
+        step_loss = F.cross_entropy(arg_logits_k[valid].clamp(min=-1e4), gt_k[valid])
         arg_losses.append(step_loss)
 
     if arg_losses:
