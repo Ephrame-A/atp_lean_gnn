@@ -239,8 +239,12 @@ class TacticWithArgsClassifier(nn.Module):
         if n_steps == 0:
             return tactic_logits, []
 
-        # 6. Autoregressive argument selection
-        premise_mask = data.premise_mask.to(dtype=torch.bool, device=node_embeddings.device)
+        # Autoregressive argument selection
+        # Overwrite the cache's premise_mask if it's too restrictive (e.g. missing 'app' or 'operator' nodes)
+        # Type IDs: var=0, type=1, predicate=2, operator=3, app=4, meta=5
+        # We allow selecting any of these common types as arguments.
+        node_types = data.node_type.to(device=node_embeddings.device)
+        premise_mask = (node_types >= 0) & (node_types <= 5)
         batch_index = data.batch.to(device=node_embeddings.device)
 
         arg_logits_list: list[Tensor] = []
@@ -263,17 +267,16 @@ class TacticWithArgsClassifier(nn.Module):
 
 
 def resolve_arg_targets_to_padded(
-    arg_node_indices: Tensor,   # [B, max_gt_args]  ground-truth node indices (-1 = invalid)
-    batch_index: Tensor,        # [total_nodes]
+    arg_node_indices: Tensor,
+    batch_index: Tensor,
     batch_size: int,
     device: torch.device,
 ) -> Tensor:
-    """Remap raw node indices to padded per-graph positions.
+    """Remap global node indices to padded per-graph positions.
 
-    Returns a ``[B, max_gt_args]`` tensor of positions into the padded
-    ``[B, N_max]`` logit matrix, with ``-1`` for un-resolvable arguments.
+    Returns [B, max_gt_args] of positions into the padded [B, N_max] logit
+    matrix, with -1 for invalid arguments.
     """
-    # Build per-node offset within its graph (same logic as ArgumentSelector)
     offsets = torch.zeros_like(batch_index)
     for b in range(batch_size):
         graph_mask = batch_index == b
@@ -283,39 +286,43 @@ def resolve_arg_targets_to_padded(
 
     result = arg_node_indices.clone().to(device)
     valid = result >= 0
-    # For valid entries, look up the padded position
-    flat_valid_indices = result[valid]
-    result[valid] = offsets[flat_valid_indices]
+    result[~valid] = -1
 
+    flat_valid_indices = result[valid]
+    total_nodes = batch_index.size(0)
+    oob = (flat_valid_indices >= total_nodes)
+    if oob.any():
+        temp = result.clone()
+        temp[valid] = torch.where(oob, torch.tensor(-1, device=device), offsets[flat_valid_indices.clamp(max=total_nodes - 1)])
+        return temp
+
+    result[valid] = offsets[flat_valid_indices]
     return result
 
 
 def compute_combined_loss(
-    tactic_logits: Tensor,       # [B, num_tactics]
-    arg_logits_list: list[Tensor],  # each [B, N_max]
-    tactic_targets: Tensor,      # [B]
-    arg_targets: Tensor,         # [B, max_gt_args]  (padded with -1)
-    batch_index: Tensor,         # [total_nodes]
+    tactic_logits: Tensor,
+    arg_logits_list: list[Tensor],
+    tactic_targets: Tensor,
+    arg_targets: Tensor,
+    batch_index: Tensor,
     *,
-    tactic_arity_per_sample: list[int],  # [B] — how many args this tactic expects
+    tactic_arity_per_sample: list[int],
     arg_loss_weight: float = 0.5,
     unknown_tactic_id: int = 0,
+    node_labels: Tensor | None = None,
+    node_types: Tensor | None = None,
 ) -> tuple[Tensor, dict[str, float]]:
-    """Tactic classification loss + masked argument selection loss.
-
-    Returns ``(total_loss, metrics_dict)``.
-    """
+    """Tactic classification loss + masked argument selection loss."""
     device = tactic_logits.device
     batch_size = tactic_logits.size(0)
 
-    # --- Tactic loss (skip UNK targets) ---
     known_mask = tactic_targets != unknown_tactic_id
     if known_mask.any():
         tactic_loss = F.cross_entropy(tactic_logits[known_mask], tactic_targets[known_mask])
     else:
         tactic_loss = torch.tensor(0.0, device=device)
 
-    # --- Argument loss ---
     if not arg_logits_list:
         return tactic_loss, {
             "tactic_loss": float(tactic_loss.item()),
@@ -323,7 +330,6 @@ def compute_combined_loss(
             "total_loss": float(tactic_loss.item()),
         }
 
-    # Remap ground-truth node indices to padded positions
     padded_targets = resolve_arg_targets_to_padded(
         arg_targets, batch_index, batch_size, device
     )
@@ -356,9 +362,9 @@ def compute_combined_loss(
         arg_loss = torch.tensor(0.0, device=device)
 
     total_loss = tactic_loss + arg_loss_weight * arg_loss
-
     return total_loss, {
         "tactic_loss": float(tactic_loss.item()),
         "arg_loss": float(arg_loss.item()),
         "total_loss": float(total_loss.item()),
     }
+

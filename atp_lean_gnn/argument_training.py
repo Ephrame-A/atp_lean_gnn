@@ -48,25 +48,31 @@ def _extract_tactic_names(batch) -> list[str]:
 
 
 def _extract_arg_targets(batch, max_args: int, device: torch.device) -> torch.Tensor:
-    """Extract ground-truth argument node indices ``[B, max_args]``, padded with -1."""
-    if hasattr(batch, "arg_node_indices"):
-        targets = batch.arg_node_indices.to(device=device, dtype=torch.long)
-        if targets.dim() == 1:
-            targets = targets.unsqueeze(0)
-        # Pad or trim to max_args columns
-        b, current_cols = targets.shape
-        if current_cols < max_args:
-            padding = torch.full(
-                (b, max_args - current_cols), -1, dtype=torch.long, device=device
-            )
-            targets = torch.cat([targets, padding], dim=1)
-        elif current_cols > max_args:
-            targets = targets[:, :max_args]
-        return targets
+    """Extract ground-truth argument node indices [B, max_args], padded with -1."""
+    if not (hasattr(batch, "arg_node_indices") and hasattr(batch, "arg_count")):
+        batch_size = int(batch.y.size(0)) if hasattr(batch, "y") else 1
+        return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
 
-    # No ground-truth args available — return all -1
-    batch_size = int(batch.y.size(0)) if hasattr(batch, "y") else 1
-    return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    batch_size = int(batch.y.size(0))
+    all_indices = batch.arg_node_indices.to(device=device, dtype=torch.long)
+    counts = batch.arg_count.tolist()
+
+    if len(counts) != batch_size:
+        return torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+
+    targets = torch.full((batch_size, max_args), -1, dtype=torch.long, device=device)
+    split_indices = torch.split(all_indices, counts)
+    ptr = batch.ptr.to(device=device)
+
+    for i, sample_indices in enumerate(split_indices):
+        n = min(len(sample_indices), max_args)
+        if n > 0:
+            shifted = sample_indices[:n].clone()
+            valid = shifted >= 0
+            shifted[valid] = shifted[valid] + ptr[i]
+            targets[i, :n] = shifted
+
+    return targets
 
 
 def train_one_epoch_with_args(
@@ -122,13 +128,24 @@ def train_one_epoch_with_args(
                 tactic_arity_per_sample=tactic_arities,
                 arg_loss_weight=arg_loss_weight,
                 unknown_tactic_id=unknown_tactic_id,
+                # Diagnosis fields
+                node_labels=batch.x,
+                node_types=batch.node_type
             )
 
         grad_scaler.scale(loss).backward()
-        grad_scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-        grad_scaler.step(optimizer)
-        grad_scaler.update()
+        if torch.isfinite(loss):
+            grad_scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            grad_scaler.step(optimizer)
+            grad_scaler.update()
+        else:
+            print(f"  WARNING: Skipping batch {batch_index} due to non-finite loss: {loss.item()}")
+            # Enhanced debug info
+            with torch.no_grad():
+                print(f"    tactic_loss={metrics['tactic_loss']:.4f}, arg_loss={metrics['arg_loss']:.4f}")
+                # Check for NaNs in gradients/weights if needed, but here we just skip the step
+            optimizer.zero_grad(set_to_none=True)
 
         batch_size = int(targets.numel())
         total_tactic_loss += metrics["tactic_loss"] * batch_size
